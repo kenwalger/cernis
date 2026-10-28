@@ -1,4 +1,4 @@
-"""Tests for the finding and receipt model in :mod:`cernis.model`."""
+"""Tests for the finding, receipt, and snapshot model in :mod:`cernis.model`."""
 
 import copy
 import dataclasses
@@ -9,13 +9,18 @@ from typing import Any
 
 import pytest
 
+from cernis import urls
 from cernis.model import (
+    NO_ATTEMPT_REASONS,
     Actor,
+    ChangeClass,
+    ErrorKind,
     Evidence,
     Finding,
     ModelError,
     ReasonCode,
     Receipt,
+    Snapshot,
     Status,
 )
 
@@ -24,6 +29,8 @@ EVIDENCE = Evidence(
     location="head > link[rel=canonical]",
     observed="https://example.com/post/",
 )
+ATTEMPT = Evidence(receipt_id="r-002", location="HTTP status", observed="403")
+ATTEMPT_REASONS = sorted(set(ReasonCode) - NO_ATTEMPT_REASONS)
 
 
 def observed(**overrides: object) -> Finding:
@@ -69,8 +76,10 @@ def not_determinable(**overrides: object) -> Finding:
         "actor": Actor.UNKNOWN,
         "subject_url": "https://example.com/post/",
         "summary": "Whether https://example.org/paper resolves.",
+        "target": "https://example.org/paper",
         "reason_code": ReasonCode.ACCESS_DENIED,
         "question": "Does https://example.org/paper resolve?",
+        "evidence": (ATTEMPT,),
     }
     fields.update(overrides)
     return Finding(**fields)
@@ -84,6 +93,7 @@ def receipt(**overrides: object) -> Receipt:
         "final_url": "https://example.com/post/",
         "redirect_chain": ("https://example.com/post",),
         "status_code": 200,
+        "error_kind": ErrorKind.NONE,
         "fetched_at": datetime(2026, 10, 28, 18, 0, tzinfo=UTC),
         "body_sha256": "a" * 64,
         "headers": (("content-type", "text/html; charset=utf-8"),),
@@ -92,6 +102,34 @@ def receipt(**overrides: object) -> Receipt:
     }
     fields.update(overrides)
     return Receipt(**fields)
+
+
+def no_response(**overrides: object) -> Receipt:
+    """Build a valid receipt for a fetch that got no response."""
+    fields: dict[str, Any] = {
+        "final_url": None,
+        "redirect_chain": (),
+        "status_code": None,
+        "error_kind": ErrorKind.TIMEOUT,
+        "body_sha256": None,
+        "headers": (),
+    }
+    fields.update(overrides)
+    return receipt(**fields)
+
+
+def snapshot(**overrides: object) -> Snapshot:
+    """Build a valid snapshot, with optional field overrides."""
+    fields: dict[str, Any] = {
+        "receipt_id": "r-001",
+        "extractor_id": "dev.article",
+        "extractor_version": "1",
+        "content_sha256": "c" * 64,
+        "head_sha256": "d" * 64,
+        "frame_sha256": "e" * 64,
+    }
+    fields.update(overrides)
+    return Snapshot(**fields)
 
 
 # OBSERVED
@@ -186,8 +224,8 @@ def test_recommendation_without_rationale_is_rejected(rationale: str | None) -> 
 # NOT_DETERMINABLE
 
 
-def test_not_determinable_with_reason_and_question_is_valid() -> None:
-    """A NOT_DETERMINABLE finding with a reason code and question constructs."""
+def test_not_determinable_with_reason_question_and_attempt_is_valid() -> None:
+    """A NOT_DETERMINABLE finding with a reason code, question, and attempt constructs."""
     assert not_determinable().reason_code is ReasonCode.ACCESS_DENIED
 
 
@@ -204,6 +242,71 @@ def test_not_determinable_without_question_is_rejected(question: str | None) -> 
         not_determinable(question=question)
 
 
+def test_no_attempt_reasons_are_external_data_and_platform_opaque() -> None:
+    """Exactly two reason codes describe questions no attempt could answer."""
+    assert {ReasonCode.REQUIRES_EXTERNAL_DATA, ReasonCode.PLATFORM_OPAQUE} == NO_ATTEMPT_REASONS
+
+
+@pytest.mark.parametrize("code", ATTEMPT_REASONS)
+def test_attempt_reason_with_evidence_is_valid(code: ReasonCode) -> None:
+    """An attempt-based reason code is valid with evidence of the attempt."""
+    assert not_determinable(reason_code=code).evidence == (ATTEMPT,)
+
+
+@pytest.mark.parametrize("code", ATTEMPT_REASONS)
+def test_attempt_reason_without_evidence_is_rejected(code: ReasonCode) -> None:
+    """An attempt-based reason code needs evidence of the attempt."""
+    with pytest.raises(ModelError, match="evidence of the attempt"):
+        not_determinable(reason_code=code, evidence=())
+
+
+@pytest.mark.parametrize("code", ATTEMPT_REASONS)
+def test_attempt_reason_with_would_require_is_rejected(code: ReasonCode) -> None:
+    """would_require is for questions no attempt could answer."""
+    with pytest.raises(ModelError, match="would_require"):
+        not_determinable(reason_code=code, would_require="Citation logs from AI assistants.")
+
+
+@pytest.mark.parametrize("code", sorted(NO_ATTEMPT_REASONS))
+def test_no_attempt_reason_with_would_require_is_valid(code: ReasonCode) -> None:
+    """A no-attempt reason code is valid with would_require and no evidence."""
+    finding = not_determinable(
+        reason_code=code, evidence=(), would_require="Citation logs from AI assistants."
+    )
+    assert finding.would_require == "Citation logs from AI assistants."
+
+
+@pytest.mark.parametrize("code", sorted(NO_ATTEMPT_REASONS))
+@pytest.mark.parametrize("would_require", [None, "", "  "])
+def test_no_attempt_reason_without_would_require_is_rejected(
+    code: ReasonCode, would_require: str | None
+) -> None:
+    """A no-attempt reason code must say what data would answer the question."""
+    with pytest.raises(ModelError, match="would_require"):
+        not_determinable(reason_code=code, evidence=(), would_require=would_require)
+
+
+@pytest.mark.parametrize("code", sorted(NO_ATTEMPT_REASONS))
+def test_no_attempt_reason_with_evidence_is_rejected(code: ReasonCode) -> None:
+    """Where no attempt was possible, there is no attempt to give evidence of."""
+    with pytest.raises(ModelError, match="no attempt"):
+        not_determinable(reason_code=code, would_require="Citation logs.")
+
+
+def test_reason_codes_match_design() -> None:
+    """The reason codes are exactly those in DESIGN.md section 3."""
+    assert {code.value for code in ReasonCode} == {
+        "REQUIRES_EXTERNAL_DATA",
+        "PLATFORM_OPAQUE",
+        "FETCH_FAILED",
+        "ACCESS_DENIED",
+        "RATE_LIMITED",
+        "DISALLOWED_BY_ROBOTS",
+        "REQUIRES_RENDERING",
+        "AMBIGUOUS",
+    }
+
+
 # Fields that belong to one status only
 
 
@@ -218,6 +321,8 @@ def test_not_determinable_without_question_is_rejected(question: str | None) -> 
         (recommendation, "question", "Why?"),
         (not_determinable, "rationale", "Because."),
         (not_determinable, "based_on", ("f-001",)),
+        (observed, "would_require", "Data."),
+        (recommendation, "would_require", "Data."),
     ],
 )
 def test_fields_of_another_status_are_rejected(
@@ -265,6 +370,76 @@ def test_defect_must_be_a_bool(value: object) -> None:
         observed(defect=value)
 
 
+# Target and key
+
+
+def test_target_defaults_to_empty() -> None:
+    """A check that covers one thing leaves target empty."""
+    assert observed().target == ""
+
+
+@pytest.mark.parametrize("target", ["  ", 3])
+def test_target_must_be_empty_or_non_blank_text(target: object) -> None:
+    """The target is a string: empty, or with non-whitespace content."""
+    with pytest.raises(ModelError, match="target"):
+        observed(target=target)
+
+
+def test_key_is_pinned_hash_of_check_url_and_target() -> None:
+    """The key encoding is fixed, so keys stay comparable across runs and releases."""
+    finding = observed(check_id="peri.og.core", target="og:image")
+    assert finding.key == "23d4acbda6ed68eb2f6ab1d193247378553c8d5e9b592ee8848c9852ca792986"
+
+
+def test_key_ignores_version_status_and_run_fields() -> None:
+    """The key leaves out check_version, so a version change shows as a CHECKER change."""
+    base = observed(check_id="epi.links.resolve", target="https://example.org/paper")
+    others = [
+        observed(check_id="epi.links.resolve", target="https://example.org/paper", **change)
+        for change in (
+            {"check_version": "2"},
+            {"id": "f-999"},
+            {"summary": "Different words."},
+            {"defect": True},
+            {"actor": Actor.PLATFORM},
+        )
+    ]
+    others.append(not_determinable(check_id="epi.links.resolve"))
+    assert {finding.key for finding in others} == {base.key}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"check_id": "peri.canonical.single"},
+        {"subject_url": "https://example.com/other/"},
+        {"target": "og:image"},
+    ],
+)
+def test_key_changes_with_check_url_or_target(change: dict[str, str]) -> None:
+    """A different check, subject, or target is a different finding."""
+    assert observed(**change).key != observed().key
+
+
+def test_key_uses_normalized_subject_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two subject URLs that normalize the same share a key."""
+    monkeypatch.setattr(urls, "normalize_url", lambda url: url.rstrip("/"))
+    assert observed(subject_url="https://example.com/post").key == observed().key
+
+
+def test_key_cannot_be_passed_in() -> None:
+    """The key is derived, never supplied."""
+    with pytest.raises(TypeError):
+        observed(key="0" * 64)
+
+
+def test_replace_recomputes_key() -> None:
+    """dataclasses.replace derives a fresh key for the new fields."""
+    finding = observed()
+    moved = dataclasses.replace(finding, target="og:url")
+    assert moved.key == observed(target="og:url").key != finding.key
+
+
 def test_findings_are_frozen() -> None:
     """Findings cannot be changed after construction."""
     finding = observed()
@@ -280,15 +455,74 @@ def test_valid_receipt_constructs() -> None:
     assert receipt().status_code == 200
 
 
-def test_receipt_without_response_is_valid() -> None:
-    """A fetch that got no response records no status code and no body hash."""
-    assert receipt(status_code=None, body_sha256=None).status_code is None
+@pytest.mark.parametrize(
+    "kind", sorted(set(ErrorKind) - {ErrorKind.NONE, ErrorKind.TOO_MANY_REDIRECTS})
+)
+def test_receipt_without_response_is_valid(kind: ErrorKind) -> None:
+    """A fetch with no response records why, and no status, final URL, or hash."""
+    built = no_response(error_kind=kind)
+    assert (built.status_code, built.final_url, built.body_sha256) == (None, None, None)
+
+
+def test_receipt_too_many_redirects_keeps_its_chain() -> None:
+    """A redirect loop has no final response but records the chain it followed."""
+    chain = ("https://example.com/post", "https://example.com/post/")
+    built = no_response(error_kind=ErrorKind.TOO_MANY_REDIRECTS, redirect_chain=chain)
+    assert built.redirect_chain == chain
+
+
+def test_receipt_too_many_redirects_without_chain_is_rejected() -> None:
+    """Too many redirects means at least one redirect was followed."""
+    with pytest.raises(ModelError, match="redirect_chain"):
+        no_response(error_kind=ErrorKind.TOO_MANY_REDIRECTS)
+
+
+def test_receipt_error_kind_none_requires_status_code() -> None:
+    """The error_kind NONE means a response arrived, so it needs a status code."""
+    with pytest.raises(ModelError, match="error_kind"):
+        no_response(error_kind=ErrorKind.NONE)
+
+
+@pytest.mark.parametrize("kind", sorted(set(ErrorKind) - {ErrorKind.NONE}))
+def test_receipt_error_kind_with_status_code_is_rejected(kind: ErrorKind) -> None:
+    """Any error_kind other than NONE means no response, so no status code."""
+    with pytest.raises(ModelError, match="error_kind"):
+        receipt(error_kind=kind)
+
+
+def test_receipt_error_kind_must_be_an_error_kind_member() -> None:
+    """A plain string is not accepted where an ErrorKind is required."""
+    with pytest.raises(ModelError, match="error_kind"):
+        receipt(error_kind="NONE")
 
 
 def test_receipt_body_hash_without_response_is_rejected() -> None:
     """A body hash requires a response."""
     with pytest.raises(ModelError, match="body_sha256"):
-        receipt(status_code=None)
+        no_response(body_sha256="a" * 64)
+
+
+def test_receipt_final_url_without_response_is_rejected() -> None:
+    """With no response, nothing answered, so there is no final URL."""
+    with pytest.raises(ModelError, match="final_url"):
+        no_response(final_url="https://example.com/post")
+
+
+def test_receipt_response_without_final_url_is_rejected() -> None:
+    """A response always has a final URL."""
+    with pytest.raises(ModelError, match="final_url"):
+        receipt(final_url=None)
+
+
+def test_error_kinds_match_design() -> None:
+    """The error kinds are exactly those in DESIGN.md section 3."""
+    assert {kind.value for kind in ErrorKind} == {
+        "NONE",
+        "TIMEOUT",
+        "CONNECTION",
+        "TLS",
+        "TOO_MANY_REDIRECTS",
+    }
 
 
 @pytest.mark.parametrize("code", [99, 600])
@@ -331,6 +565,12 @@ def test_receipt_header_outside_fixed_subset_is_rejected() -> None:
         receipt(headers=(("set-cookie", "session=1"),))
 
 
+def test_receipt_records_retry_after() -> None:
+    """The retry-after header is in the recorded subset, for 429 and 503 responses."""
+    built = receipt(status_code=429, headers=(("retry-after", "120"),))
+    assert built.header("retry-after") == "120"
+
+
 def test_receipt_duplicate_header_is_rejected() -> None:
     """Each recorded header appears at most once."""
     with pytest.raises(ModelError, match="etag"):
@@ -356,7 +596,15 @@ def test_receipt_headers_are_sorted_and_looked_up_by_name() -> None:
 
 def test_model_objects_support_asdict_copy_and_pickle() -> None:
     """Reports and stores can serialize and copy every model object."""
-    for value in (receipt(), observed(), recommendation(), not_determinable()):
+    values = (
+        receipt(),
+        no_response(),
+        observed(),
+        recommendation(),
+        not_determinable(),
+        snapshot(),
+    )
+    for value in values:
         assert copy.deepcopy(value) == value
         assert pickle.loads(pickle.dumps(value)) == value
         assert dataclasses.asdict(value)
@@ -372,3 +620,52 @@ def test_receipt_without_redirects_ends_where_it_started() -> None:
     """With no redirects, final_url equals requested_url."""
     with pytest.raises(ModelError, match="final_url"):
         receipt(redirect_chain=())
+
+
+# Snapshot
+
+
+def test_valid_snapshot_constructs() -> None:
+    """A snapshot with all three hashes constructs."""
+    assert snapshot().extractor_id == "dev.article"
+
+
+def test_snapshot_without_body_is_valid() -> None:
+    """An extractor that finds no article body records content_sha256 as None."""
+    assert snapshot(content_sha256=None).content_sha256 is None
+
+
+@pytest.mark.parametrize("field", ["content_sha256", "head_sha256", "frame_sha256"])
+@pytest.mark.parametrize("digest", ["c" * 63, "C" * 64])
+def test_snapshot_malformed_hash_is_rejected(field: str, digest: str) -> None:
+    """Snapshot hashes are 64 lowercase hexadecimal characters."""
+    with pytest.raises(ModelError, match=field):
+        snapshot(**{field: digest})
+
+
+@pytest.mark.parametrize("field", ["head_sha256", "frame_sha256"])
+def test_snapshot_head_and_frame_hashes_are_required(field: str) -> None:
+    """Only content_sha256 may be missing."""
+    with pytest.raises(ModelError, match=field):
+        snapshot(**{field: None})
+
+
+@pytest.mark.parametrize("field", ["receipt_id", "extractor_id", "extractor_version"])
+def test_snapshot_blank_identifiers_are_rejected(field: str) -> None:
+    """Snapshot identifiers may not be blank."""
+    with pytest.raises(ModelError, match=field):
+        snapshot(**{field: ""})
+
+
+# ChangeClass
+
+
+def test_change_classes_match_design() -> None:
+    """The change classes are exactly those in DESIGN.md section 5."""
+    assert {cls.value for cls in ChangeClass} == {
+        "CHECKER",
+        "AUTHOR_CONTENT",
+        "AUTHOR_METADATA",
+        "PLATFORM_RENDERING",
+        "UNCLASSIFIED",
+    }

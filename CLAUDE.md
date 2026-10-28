@@ -10,11 +10,12 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 - `docs/DESIGN.md` is the source of truth. Before changing anything, read `README.md`, then `docs/DESIGN.md` and `docs/adr/`, then `tests/fixtures/README.md`.
 - Do not contradict an ADR. If a task seems to require it, stop and ask.
-- Record each session in `docs/sessions/SESSION-NN.md`: what was built, decisions made, and anything deferred.
+- Record each session in `docs/sessions/SESSION-NN.md` (a follow-up session adds a letter, as in `SESSION-01b.md`): what was built, decisions made, and anything deferred. Session records are not rewritten; a later session supersedes an earlier decision in its own record.
+- ADRs are amended with a dated amendment section, never rewritten.
 
 ## Current stage
 
-**Phase 1 (scaffold) is built (session 1, 2026-10-28).** The finding and receipt model with its status rules (`src/cernis/model.py`, ADR-001), the no-promise checker (`src/cernis/promises.py`), the check registry with every planned check at version 1 and none implemented (`src/cernis/checks/registry.py`), and `cernis checks`.
+**Phase 1 (scaffold) is built (session 1, 2026-10-28).** The finding and receipt model with its status rules (`src/cernis/model.py`, ADR-001), the no-promise checker (`src/cernis/promises.py`), the check registry with every planned check at version 1 and none implemented (`src/cernis/checks/registry.py`), and `cernis checks`. Session 1b aligned the model with DESIGN.md draft 2: `would_require` for no-attempt questions, `RATE_LIMITED`, receipt `error_kind`, finding `target` and derived `key`, `Snapshot`, and `ChangeClass` (ADR-001 amendment 1).
 
 **Next: Phase 2, the fetcher** (DESIGN.md section 10). Until a session prompt says otherwise, there is no fetching, no parsing, and no network access of any kind.
 

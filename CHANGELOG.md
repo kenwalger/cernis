@@ -17,6 +17,11 @@ uses [Semantic Versioning](https://semver.org/).
 - The check registry (`cernis.checks.registry`) listing every planned check at
   version 1, none implemented yet.
 - `cernis checks [--format table|json]`.
+- DESIGN.md draft 2 model changes: `would_require` on NOT_DETERMINABLE
+  findings with no possible attempt, and required evidence for the rest;
+  `ReasonCode.RATE_LIMITED`; `ErrorKind` and `Receipt.error_kind`, with
+  `retry-after` in the recorded headers; `Finding.target` and the derived
+  cross-run `Finding.key`; `Snapshot`; `ChangeClass`.
 
 ## [0.0.1] - 2026-10-28
 

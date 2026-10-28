@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 1 (2026-10-28)
+**Status:** Draft 2 (2026-10-28). Draft 2 answers the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -56,7 +56,9 @@ Every finding has two independent fields: **status** (how sure we are) and **act
 | --- | --- | --- |
 | `OBSERVED` | A condition verified directly from fetched content | Must carry evidence: where Cernis looked and what it found, or exactly what it searched for and did not find. Has a `defect` flag, true only under principle 4. |
 | `RECOMMENDATION` | A suggested change | Must reference at least one `OBSERVED` finding by ID. Phrased as an action. Must not predict an outcome. |
-| `NOT_DETERMINABLE` | A question Cernis was asked, or would naturally be asked, but cannot answer from what it can see | Must state what was asked, what was searched, and a reason code. |
+| `NOT_DETERMINABLE` | A question Cernis was asked, or would naturally be asked, but cannot answer from what it can see | Must state the question and a reason code. When Cernis attempted something (a fetch, a search of the page), it must carry evidence of the attempt. When no attempt was possible (`REQUIRES_EXTERNAL_DATA`, `PLATFORM_OPAQUE`), it must instead state, in `would_require`, what data would answer the question. |
+
+Fields that belong to another status are rejected: a `rationale` on an `OBSERVED` finding is an error, not an extra.
 
 In reports, the third status is shown as **Not determinable (*non liquet*)**. *Non liquet*, "it is not clear," was the verdict a Roman judge could give when a case could not be decided on the evidence. It is the most honest sentence a tool can say, and Cernis will say it often.
 
@@ -66,8 +68,9 @@ Reason codes for `NOT_DETERMINABLE`:
 | --- | --- |
 | `REQUIRES_EXTERNAL_DATA` | "Is this page cited by AI assistants?" cannot be answered from the page. |
 | `PLATFORM_OPAQUE` | How DEV ranks posts in its own feed. |
-| `FETCH_FAILED` | Timeout, connection error, 5xx. |
-| `ACCESS_DENIED` | 401, 403, or 429. A 403 is not a broken link; it is an unanswered question. |
+| `FETCH_FAILED` | Timeout, connection error, TLS error, too many redirects, 5xx. The receipt's `error_kind` says which. |
+| `ACCESS_DENIED` | 401 or 403. A 403 is not a broken link; it is an unanswered question. |
+| `RATE_LIMITED` | 429, after retrying with backoff (honoring `Retry-After`) and still being refused. Temporary by nature, so a later run may answer it. |
 | `DISALLOWED_BY_ROBOTS` | Cernis's own user agent is disallowed, so it did not look. |
 | `REQUIRES_RENDERING` | The content only exists after JavaScript runs. The MVP has no headless browser. |
 | `AMBIGUOUS` | The evidence supports more than one reading (for example, two different canonical URLs). |
@@ -90,36 +93,77 @@ A test in the test suite scans every recommendation template for outcome languag
 
 ```text
 Finding
-  id                 stable within a run
+  id                 unique within a run
+  key                stable across runs: hash of (check_id, normalized subject_url, target)
   check_id           e.g. "peri.canonical.present"
   check_version      e.g. "1"
+  target             what specifically was checked, when a check covers several things
+                     (e.g. "og:image", or a link URL); empty otherwise
   status             OBSERVED | RECOMMENDATION | NOT_DETERMINABLE
   defect             bool (OBSERVED only)
   actor              AUTHOR | PLATFORM | UNKNOWN
   subject_url        the article URL the finding is about
-  evidence           list of Evidence (receipt id, location, observed value or searched-for)
+  evidence           list of Evidence (receipt id, location, and either the value found
+                     or what was searched for and not found; an empty string is a value)
   summary            one sentence, plain English
   rationale          RECOMMENDATION only: why, citing the standard or the stated intent
-  based_on           RECOMMENDATION only: OBSERVED finding ids
+  based_on           RECOMMENDATION only: OBSERVED finding ids, checked at run assembly
   reason_code        NOT_DETERMINABLE only
   question           NOT_DETERMINABLE only: what could not be answered
+  would_require      NOT_DETERMINABLE only, when no attempt was possible: the data
+                     that would answer the question
 ```
 
+The `key` leaves out `check_version` on purpose. When a check's version changes, the same key appearing with a different version is how history recognizes a `CHECKER` change instead of a new problem.
+
 ### Receipt fields (sketch)
+
+A receipt records the raw facts of one fetch, and nothing parsed.
 
 ```text
 Receipt
   id
   requested_url
-  final_url          after redirects
+  final_url          after redirects (None if no response)
   redirect_chain
-  status_code
+  status_code        None if no response
+  error_kind         NONE | TIMEOUT | CONNECTION | TLS | TOO_MANY_REDIRECTS
   fetched_at         UTC
-  body_sha256
-  headers            a fixed subset (content-type, etag, last-modified, x-robots-tag)
+  body_sha256        of the raw response body (None if no response)
+  headers            a fixed subset (content-type, etag, last-modified, retry-after,
+                     x-robots-tag), stored as a sorted tuple of (name, value) pairs
   cernis_version
   user_agent
 ```
+
+### Snapshot fields (sketch)
+
+A snapshot is what the parser derived from one receipt. History compares snapshots, not raw bodies, because a raw body changes whenever a platform rotates an asset hash or a CSRF token.
+
+```text
+Snapshot
+  receipt_id
+  extractor_id       e.g. "dev.article" or "wordpress.entry"
+  extractor_version
+  content_sha256     normalized text of the article body only (None if not found)
+  head_sha256        normalized, sorted metadata from <head>: canonical, meta, og:*,
+                     JSON-LD, lang, title
+  frame_sha256       the rest of the page, normalized (navigation, footer, template)
+```
+
+Finding the article body needs a site-aware extractor (DEV's article container, WordPress's entry content). If the extractor finds no body, `content_sha256` is None, and any change involving that snapshot is `UNCLASSIFIED`.
+
+### URL comparison
+
+Checks that compare URLs (`peri.og.url_matches_canonical`, `epi.pair.canonical`) use one shared function with three outcomes, so that cosmetic differences never become false defects (claim C-3 depends on this):
+
+| Outcome | When | Result |
+| --- | --- | --- |
+| `IDENTICAL` | The strings match exactly | No defect |
+| `EQUIVALENT` | They match after normalizing: scheme and host lowercased, default port removed, fragment removed, trailing slash on the path ignored, percent-encoding normalized; or one redirects to the other (recorded with the redirect receipt) | No defect; the difference is reported as a fact |
+| `DIFFERENT` | Anything else, including a different scheme (http versus https), a different host, a different path, or a different query string | Defect, where the check says so |
+
+Query strings are compared exactly. Cernis does not guess which parameters are "only tracking."
 
 ---
 
@@ -131,30 +175,32 @@ Gérard Genette split a book's *paratext*, everything that surrounds a text and 
 
 Checks against the fetched HTML of the article itself.
 
-| ID | Check | Defect when |
+"Reports" is what every run records. "Defect when" is the only condition that sets `defect`; "never" means the check reports facts only.
+
+| ID | Reports | Defect when |
 | --- | --- | --- |
-| `peri.canonical.present` | A `<link rel="canonical">` exists | Absent (reported as `OBSERVED`, defect false on its own; the pair check decides intent) |
-| `peri.canonical.single` | Exactly one canonical | More than one, or conflicting values |
-| `peri.canonical.absolute` | The canonical is an absolute URL | Relative or malformed |
-| `peri.meta.description` | A meta description exists; its length is reported | Absent is a fact; never a length judgment |
-| `peri.og.core` | `og:title`, `og:description`, `og:image`, `og:url` present | Reported per property |
-| `peri.og.url_matches_canonical` | `og:url` agrees with the canonical | They disagree |
-| `peri.lang` | `<html lang>` is set | Reported as a fact |
-| `peri.jsonld.parses` | Any JSON-LD blocks parse as JSON; their `@type` is reported | A block fails to parse |
-| `peri.title` | The `<title>` and its length | Never a defect; a fact |
+| `peri.canonical.present` | Whether a `<link rel="canonical">` exists | Never (the pair check decides whether a missing canonical contradicts intent) |
+| `peri.canonical.single` | How many canonicals, and their values | More than one with values that are not `IDENTICAL` or `EQUIVALENT` |
+| `peri.canonical.absolute` | Whether the canonical is an absolute URL | Relative or malformed |
+| `peri.meta.description` | Presence, and length in characters | Never (absence and length are facts) |
+| `peri.og.core` | Presence of `og:title`, `og:description`, `og:image`, `og:url`, one finding per property (the property is the `target`) | Never |
+| `peri.og.url_matches_canonical` | The URL comparison outcome | `DIFFERENT` |
+| `peri.lang` | The `<html lang>` value, or its absence | Never |
+| `peri.jsonld.parses` | Each JSON-LD block's `@type`, one finding per block | A block fails to parse as JSON |
+| `peri.title` | The `<title>` and its length | Never |
 
 ### Epitext: around the page
 
 Checks against things outside the article's HTML.
 
-| ID | Check | Defect when |
+| ID | Reports | Defect when |
 | --- | --- | --- |
-| `epi.pair.canonical` | **The flagship check.** Given an original and a copy, the copy's canonical points at the original, and the original's canonical points at itself | Either side disagrees with the declared pairing |
-| `epi.canonical.resolves` | The canonical URL returns 200 without a redirect chain | 404 or 410 (a 403 or 429 is `NOT_DETERMINABLE`) |
-| `epi.og.image.resolves` | The `og:image` URL returns an image | Not 200, or not an image content type |
-| `epi.robots.access` | What the site's robots.txt says about this URL for general crawlers and for named AI crawlers | Never a defect; whether to allow AI crawlers is the author's or platform's choice, and Cernis only reports it |
-| `epi.sitemap.listed` | The URL appears in the site's sitemap (WordPress) | Absent from a sitemap that exists |
-| `epi.links.resolve` | Links in the article body resolve (paced) | 404 or 410 only |
+| `epi.pair.canonical` | **The flagship check.** Given a declared original and copy: the URL comparison outcome for the copy's canonical against the original, and for the original's canonical against itself | Either comparison is `DIFFERENT`, or the copy has no canonical at all |
+| `epi.canonical.resolves` | The canonical URL's status and redirect chain | 404 or 410 (401 and 403 are `ACCESS_DENIED`; 429 is `RATE_LIMITED`) |
+| `epi.og.image.resolves` | The `og:image` URL's status and content type | 404 or 410, or a 200 that is not an image content type |
+| `epi.robots.access` | What the site's robots.txt says about this URL for general crawlers and for each named AI crawler (one finding per crawler; the crawler is the `target`) | Never; whether to allow AI crawlers is the author's or platform's choice |
+| `epi.sitemap.listed` | Whether the URL appears in the site's sitemap (WordPress) | Absent from a sitemap that exists and lists other posts |
+| `epi.links.resolve` | Each body link's status, paced (the link is the `target`) | 404 or 410 only |
 
 ### Explicitly out of scope for the MVP
 
@@ -170,14 +216,21 @@ Checks against things outside the article's HTML.
 
 ## 5. History and change classification
 
-Each audit run is appended to a tamper-evident ledger. Comparing two runs of the same URL produces **change events**, and each change is classified by who caused it:
+Each audit run is appended to a tamper-evident ledger. Comparing two runs of the same URL produces **change events** at two levels.
+
+**Finding changes**, matched by finding `key`: a key that appears, disappears, or changes status, defect, or evidence value between runs.
+
+**Page changes**, from the two runs' snapshots, classified by who caused them:
 
 | Class | How Cernis decides |
 | --- | --- |
-| `AUTHOR_CONTENT` | The article body's normalized text hash changed |
-| `PLATFORM_RENDERING` | The body text hash is unchanged, but the page around it (head, template, metadata the author does not control) changed |
-| `CHECKER` | The Cernis version or a check version differs between the two runs |
-| `UNCLASSIFIED` | More than one of the above, or the evidence does not separate them |
+| `CHECKER` | The Cernis version, an extractor version, or a check version differs between the runs. Checked first. |
+| `AUTHOR_CONTENT` | `content_sha256` changed |
+| `AUTHOR_METADATA` | `head_sha256` changed in fields the author controls on that site (DEV front matter fields; anything on WordPress) |
+| `PLATFORM_RENDERING` | `content_sha256` is unchanged, and `frame_sha256` or platform-controlled head fields changed |
+| `UNCLASSIFIED` | More than one of the above at once, a missing `content_sha256`, or evidence that does not separate them |
+
+A finding change is attributed to the page change of the same run pair, so a report can say "this defect appeared after a `PLATFORM_RENDERING` change," which tells the author it is not their doing.
 
 `UNCLASSIFIED` is the change-tracking equivalent of *non liquet*, and it is a legitimate answer. When the checker changed between runs, Cernis says so first, because otherwise a new check looks like a new problem with the page.
 
@@ -297,7 +350,7 @@ Run:      20261117T180000Z · Cernis 0.1.0
 
 - Set `canonical_url` in the DEV front matter to the original URL.
   Why: you declared kenwalger.com as the original; the copy's canonical contradicts it.
-  Based on: epi.pair.canonical
+  Based on: epi.pair.canonical (the DEV copy's canonical points at itself)
 
 ## Not determinable (non liquet)
 
@@ -307,6 +360,8 @@ Run:      20261117T180000Z · Cernis 0.1.0
 - Whether https://example.org/paper resolves.
   Reason: ACCESS_DENIED (403). Not reported as a broken link.
 ```
+
+`based_on` stores finding ids. Reports render each one as the check id plus that finding's summary, never a bare id.
 
 ---
 
@@ -343,11 +398,12 @@ Each phase is one or more numbered Claude Code sessions, with the usual CLAUDE.m
 | Phase | What | Done when |
 | --- | --- | --- |
 | 0 | Reserve the name: v0.0.1 on PyPI (prompt in section 12). Logo and BRAND.md. | `pip index versions cernis` shows 0.0.1 |
-| 1 | Scaffold: repo, CLAUDE.md, tooling, `model.py` with the finding and receipt types, status rules as validators, the no-promise test, synthetic fixtures, `cernis checks` | `uv run cernis checks` lists the planned checks; the full check suite passes |
-| 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, cache, receipts | Receipts produced against a local test server, including 403, 404, 429, redirects, and timeouts |
-| 3 | Peritext checks and Markdown/JSON reports; evaluate sovereign-sieve | `cernis audit <url>` produces a report from fixtures and from one real article |
+| 1 | Scaffold: repo, CLAUDE.md, tooling, `model.py` with the finding and receipt types, status rules as validators, the no-promise test, `cernis checks` | Done in Session 1. Session 1b aligns the model with draft 2. |
+| 1.5 | CI on Python 3.12 to 3.14, and Trusted Publishing to PyPI | CI green on a pull request; `docs/RELEASING.md` written |
+| 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Receipts produced against a local test server, including 403, 404, 429, redirects, and timeouts |
+| 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | `cernis audit <url>` produces a report from fixtures and from one real article |
 | 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | `cernis pairs --map` runs over all cross-posted articles |
-| 5 | Ledger store, history, diff, change classification | C-2 stability runs pass |
+| 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass |
 | 6 | Fix the *proposed* numbers, run the first full audit, review every defect, evaluate C-1 to C-5 | An evaluation note, and material for an article |
 
 A natural first article: *Non Liquet: Building an Auditor That Admits What It Can't See.*

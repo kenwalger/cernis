@@ -28,3 +28,17 @@ These rules are enforced when a finding is constructed (`src/cernis/model.py`). 
 - The no-promise rule is enforced on recommendation templates by the test suite (`src/cernis/promises.py`), not on filled-in text, because values taken from a page may contain any words.
 - There is no field for a score, and adding one would contradict this ADR.
 - Adding a status or a reason code is a model change that every report format and the store must handle.
+
+## Amendment 1 (2026-10-28, session 1b): what NOT_DETERMINABLE must record
+
+DESIGN.md draft 2 makes the third status say how Cernis came to not know.
+
+- A `NOT_DETERMINABLE` finding still needs a `reason_code` and a `question`.
+- When Cernis attempted something (a fetch, a search of the page), it must carry evidence of the attempt. This applies to every reason code except the two below.
+- When no attempt was possible (`REQUIRES_EXTERNAL_DATA`, `PLATFORM_OPAQUE`), it must instead state, in a non-blank `would_require`, what data would answer the question. It carries no evidence, since there was no attempt to give evidence of.
+- `would_require` is rejected on the other statuses and on attempt-based codes.
+- A new reason code, `RATE_LIMITED`, covers a 429 that is still refused after retrying with backoff. `ACCESS_DENIED` now covers 401 and 403 only.
+
+Every finding also gains a derived `key`, stable across runs: the SHA-256 of the check id, the normalized subject URL, and the `target`, leaving out the check version. It is computed at construction and cannot be passed in.
+
+Consequence: "what cannot be determined" becomes checkable. A reader can tell an unanswered question Cernis tried to answer from one it could never answer, and see what would answer the second kind.

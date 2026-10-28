@@ -1,4 +1,4 @@
-"""The finding and receipt model (DESIGN.md section 3, ADR-001).
+"""The finding, receipt, and snapshot model (DESIGN.md sections 3 and 5, ADR-001).
 
 Every finding carries two independent fields: a :class:`Status` (how sure
 Cernis is) and an :class:`Actor` (whose job it is). The rules that make each
@@ -6,14 +6,18 @@ status honest are enforced at construction, so an invalid finding cannot
 exist.
 """
 
+import hashlib
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 
+from cernis import urls
+
 
 class ModelError(ValueError):
-    """Raised when a finding, evidence, or receipt breaks a model rule."""
+    """Raised when a model object breaks a model rule."""
 
 
 class Status(StrEnum):
@@ -39,9 +43,23 @@ class ReasonCode(StrEnum):
     PLATFORM_OPAQUE = "PLATFORM_OPAQUE"
     FETCH_FAILED = "FETCH_FAILED"
     ACCESS_DENIED = "ACCESS_DENIED"
+    """401 or 403."""
+    RATE_LIMITED = "RATE_LIMITED"
+    """429, still refused after retrying with backoff."""
     DISALLOWED_BY_ROBOTS = "DISALLOWED_BY_ROBOTS"
     REQUIRES_RENDERING = "REQUIRES_RENDERING"
     AMBIGUOUS = "AMBIGUOUS"
+
+
+NO_ATTEMPT_REASONS: frozenset[ReasonCode] = frozenset(
+    {ReasonCode.REQUIRES_EXTERNAL_DATA, ReasonCode.PLATFORM_OPAQUE}
+)
+"""Reason codes for questions no attempt could answer.
+
+A NOT_DETERMINABLE finding with one of these codes states ``would_require``
+instead of carrying evidence. Every other code means Cernis attempted
+something, and the finding must carry evidence of the attempt.
+"""
 
 
 class Family(StrEnum):
@@ -51,8 +69,28 @@ class Family(StrEnum):
     EPITEXT = "epitext"
 
 
+class ErrorKind(StrEnum):
+    """Why a fetch got no response, or ``NONE`` if it got one."""
+
+    NONE = "NONE"
+    TIMEOUT = "TIMEOUT"
+    CONNECTION = "CONNECTION"
+    TLS = "TLS"
+    TOO_MANY_REDIRECTS = "TOO_MANY_REDIRECTS"
+
+
+class ChangeClass(StrEnum):
+    """Who caused a page change between two runs (DESIGN.md section 5)."""
+
+    CHECKER = "CHECKER"
+    AUTHOR_CONTENT = "AUTHOR_CONTENT"
+    AUTHOR_METADATA = "AUTHOR_METADATA"
+    PLATFORM_RENDERING = "PLATFORM_RENDERING"
+    UNCLASSIFIED = "UNCLASSIFIED"
+
+
 RECORDED_HEADERS: frozenset[str] = frozenset(
-    {"content-type", "etag", "last-modified", "x-robots-tag"}
+    {"content-type", "etag", "last-modified", "retry-after", "x-robots-tag"}
 )
 """The fixed subset of response headers a receipt records, in lowercase."""
 
@@ -69,6 +107,40 @@ def _require_text(owner: str, name: str, value: object) -> None:
     """
     if not isinstance(value, str) or not value.strip():
         raise ModelError(f"{owner}: {name} must be a non-blank string")
+
+
+def _require_sha256(owner: str, name: str, value: object) -> None:
+    """Raise unless ``value`` is a lowercase hex SHA-256 digest.
+
+    :param owner: Description of the object being validated, for the message.
+    :param name: The field name, for the message.
+    :param value: The value to check.
+    :raises ModelError: If ``value`` is not 64 lowercase hex characters.
+    """
+    if not isinstance(value, str) or not _SHA256_HEX.fullmatch(value):
+        raise ModelError(f"{owner}: {name} must be 64 lowercase hex characters")
+
+
+def finding_key(check_id: str, subject_url: str, target: str) -> str:
+    """Compute the key that identifies a finding across runs.
+
+    The key is the SHA-256 of a JSON array of the check id, the normalized
+    subject URL, and the target. It leaves out ``check_version`` on purpose:
+    the same key with a different version is how history recognizes a
+    ``CHECKER`` change. The encoding is part of the history contract; changing
+    it makes every earlier key unmatchable.
+
+    :param check_id: The registered check id.
+    :param subject_url: The article URL, before normalization.
+    :param target: What specifically was checked, or an empty string.
+    :return: The key, as 64 lowercase hex characters.
+    """
+    payload = json.dumps(
+        [check_id, urls.normalize_url(subject_url), target],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -116,23 +188,29 @@ class Finding:
     - ``OBSERVED`` needs at least one :class:`Evidence`. Only ``OBSERVED``
       may set ``defect``.
     - ``RECOMMENDATION`` needs a non-empty ``based_on`` and a ``rationale``.
-    - ``NOT_DETERMINABLE`` needs a ``reason_code`` and a ``question``.
+    - ``NOT_DETERMINABLE`` needs a ``reason_code`` and a ``question``. For a
+      code in :data:`NO_ATTEMPT_REASONS` it needs ``would_require`` and no
+      evidence; for any other code it needs evidence of the attempt and no
+      ``would_require``.
 
     Fields that belong to one status (``rationale`` and ``based_on`` to
-    ``RECOMMENDATION``; ``reason_code`` and ``question`` to
-    ``NOT_DETERMINABLE``) must be left empty on the others.
+    ``RECOMMENDATION``; ``reason_code``, ``question``, and ``would_require``
+    to ``NOT_DETERMINABLE``) must be left empty on the others.
 
     Whether each ``based_on`` id names an ``OBSERVED`` finding in the same run
-    cannot be checked from one finding alone; that is checked where a run's
-    findings are assembled.
+    cannot be checked from one finding alone; that is checked at run assembly.
 
-    :param id: Identifier, stable within a run.
+    ``key`` is derived, never passed in: see :func:`finding_key`.
+
+    :param id: Identifier, unique within a run.
     :param check_id: The registered check that produced the finding.
     :param check_version: The version of that check.
     :param status: How sure Cernis is.
     :param actor: Who can change the thing the finding is about.
     :param subject_url: The article URL the finding is about.
     :param summary: One sentence, in plain English.
+    :param target: What specifically was checked when a check covers several
+        things (such as ``og:image`` or a link URL); empty otherwise.
     :param evidence: What Cernis saw or searched for.
     :param defect: Whether an ``OBSERVED`` condition violates a published
         standard or the author's stated intent (DESIGN.md principle 4).
@@ -141,6 +219,8 @@ class Finding:
     :param based_on: ``RECOMMENDATION`` only: ids of the findings it rests on.
     :param reason_code: ``NOT_DETERMINABLE`` only: why it cannot be answered.
     :param question: ``NOT_DETERMINABLE`` only: what could not be answered.
+    :param would_require: ``NOT_DETERMINABLE`` only, for a code in
+        :data:`NO_ATTEMPT_REASONS`: the data that would answer the question.
     :raises ModelError: If any status rule or field rule is broken.
     """
 
@@ -151,21 +231,26 @@ class Finding:
     actor: Actor
     subject_url: str
     summary: str
+    target: str = ""
     evidence: tuple[Evidence, ...] = ()
     defect: bool = False
     rationale: str | None = None
     based_on: tuple[str, ...] = ()
     reason_code: ReasonCode | None = None
     question: str | None = None
+    would_require: str | None = None
+    key: str = field(init=False)
 
     def __post_init__(self) -> None:
-        """Validate the common fields, then the rules for the status.
+        """Validate the common fields and the rules for the status, then derive the key.
 
         :raises ModelError: If any rule is broken.
         """
         owner = f"Finding {self.id!r}"
         for name in ("id", "check_id", "check_version", "subject_url", "summary"):
             _require_text(owner, name, getattr(self, name))
+        if not isinstance(self.target, str) or (self.target and not self.target.strip()):
+            raise ModelError(f"{owner}: target must be empty or a non-blank string")
         if not isinstance(self.status, Status):
             raise ModelError(f"{owner}: status must be a Status, got {self.status!r}")
         if not isinstance(self.actor, Actor):
@@ -188,10 +273,9 @@ class Finding:
             if self.based_on:
                 raise ModelError(f"{owner}: based_on is for RECOMMENDATION findings only")
         if self.status is not Status.NOT_DETERMINABLE:
-            if self.reason_code is not None:
-                raise ModelError(f"{owner}: reason_code is for NOT_DETERMINABLE findings only")
-            if self.question is not None:
-                raise ModelError(f"{owner}: question is for NOT_DETERMINABLE findings only")
+            for name in ("reason_code", "question", "would_require"):
+                if getattr(self, name) is not None:
+                    raise ModelError(f"{owner}: {name} is for NOT_DETERMINABLE findings only")
 
         if self.status is Status.OBSERVED:
             if not self.evidence:
@@ -205,28 +289,58 @@ class Finding:
                 raise ModelError(f"{owner}: based_on may not reference the finding itself")
             _require_text(owner, "rationale", self.rationale)
         else:
-            if not isinstance(self.reason_code, ReasonCode):
-                raise ModelError(f"{owner}: needs a reason_code")
-            _require_text(owner, "question", self.question)
+            self._validate_not_determinable(owner)
+
+        object.__setattr__(self, "key", finding_key(self.check_id, self.subject_url, self.target))
+
+    def _validate_not_determinable(self, owner: str) -> None:
+        """Apply the NOT_DETERMINABLE rules.
+
+        :param owner: Description of the finding, for messages.
+        :raises ModelError: If any NOT_DETERMINABLE rule is broken.
+        """
+        if not isinstance(self.reason_code, ReasonCode):
+            raise ModelError(f"{owner}: needs a reason_code")
+        _require_text(owner, "question", self.question)
+        if self.reason_code in NO_ATTEMPT_REASONS:
+            _require_text(owner, "would_require", self.would_require)
+            if self.evidence:
+                raise ModelError(
+                    f"{owner}: {self.reason_code} means no attempt was possible, "
+                    "so it carries would_require, not evidence"
+                )
+        else:
+            if not self.evidence:
+                raise ModelError(f"{owner}: {self.reason_code} needs evidence of the attempt")
+            if self.would_require is not None:
+                raise ModelError(
+                    f"{owner}: would_require is only for {', '.join(sorted(NO_ATTEMPT_REASONS))}"
+                )
 
 
 @dataclass(frozen=True, kw_only=True)
 class Receipt:
-    """A record of one fetch: what was asked for and exactly what came back.
+    """A record of the raw facts of one fetch, and nothing parsed.
+
+    ``error_kind`` is ``NONE`` when a response arrived; then ``status_code``
+    and ``final_url`` are set. Any other ``error_kind`` means no response:
+    ``status_code``, ``final_url``, and ``body_sha256`` are ``None``.
 
     ``redirect_chain`` lists, in order, every URL that answered with a
     redirect, starting with ``requested_url``; it is empty when there was no
-    redirect, in which case ``final_url`` equals ``requested_url``. A fetch
-    that got no response at all (a timeout or connection error) has
-    ``status_code`` and ``body_sha256`` set to ``None``.
+    redirect, in which case a response's ``final_url`` equals
+    ``requested_url``. A ``TOO_MANY_REDIRECTS`` receipt keeps the chain it
+    followed.
 
     :param id: Identifier, stable within a run.
     :param requested_url: The URL Cernis asked for.
-    :param final_url: The URL that answered, after redirects.
+    :param final_url: The URL that answered, after redirects, or ``None`` if
+        no response.
     :param redirect_chain: The URLs that redirected, in order.
     :param status_code: The final HTTP status, or ``None`` if no response.
+    :param error_kind: Why there was no response, or ``NONE``.
     :param fetched_at: When the fetch happened, timezone-aware, in UTC.
-    :param body_sha256: Lowercase hex SHA-256 of the response body, if any.
+    :param body_sha256: Lowercase hex SHA-256 of the raw response body, if any.
     :param headers: ``(name, value)`` pairs for the response headers in
         :data:`RECORDED_HEADERS`, names in lowercase, each at most once.
         Stored sorted by name, so order does not affect equality.
@@ -237,9 +351,10 @@ class Receipt:
 
     id: str
     requested_url: str
-    final_url: str
+    final_url: str | None
     redirect_chain: tuple[str, ...] = ()
     status_code: int | None
+    error_kind: ErrorKind
     fetched_at: datetime
     body_sha256: str | None
     headers: tuple[tuple[str, str], ...] = ()
@@ -252,30 +367,43 @@ class Receipt:
         :raises ModelError: If any receipt rule is broken.
         """
         owner = f"Receipt {self.id!r}"
-        for name in ("id", "requested_url", "final_url", "cernis_version", "user_agent"):
+        for name in ("id", "requested_url", "cernis_version", "user_agent"):
             _require_text(owner, name, getattr(self, name))
 
-        if not isinstance(self.redirect_chain, tuple):
-            raise ModelError(f"{owner}: redirect_chain must be a tuple of URLs")
-        if self.redirect_chain:
-            if self.redirect_chain[0] != self.requested_url:
-                raise ModelError(f"{owner}: redirect_chain must start with requested_url")
-        elif self.final_url != self.requested_url:
-            raise ModelError(
-                f"{owner}: final_url must equal requested_url when there is no redirect"
-            )
-
+        if not isinstance(self.error_kind, ErrorKind):
+            raise ModelError(f"{owner}: error_kind must be an ErrorKind, got {self.error_kind!r}")
         if self.status_code is not None and (
             not isinstance(self.status_code, int) or isinstance(self.status_code, bool)
         ):
             raise ModelError(f"{owner}: status_code must be an int or None")
-        if self.status_code is None:
+        responded = self.error_kind is ErrorKind.NONE
+        if responded and self.status_code is None:
+            raise ModelError(f"{owner}: error_kind NONE requires a status_code")
+        if not responded and self.status_code is not None:
+            raise ModelError(f"{owner}: error_kind {self.error_kind} requires no status_code")
+
+        if not isinstance(self.redirect_chain, tuple):
+            raise ModelError(f"{owner}: redirect_chain must be a tuple of URLs")
+        if self.redirect_chain and self.redirect_chain[0] != self.requested_url:
+            raise ModelError(f"{owner}: redirect_chain must start with requested_url")
+        if self.error_kind is ErrorKind.TOO_MANY_REDIRECTS and not self.redirect_chain:
+            raise ModelError(f"{owner}: TOO_MANY_REDIRECTS needs the redirect_chain it followed")
+
+        if responded:
+            _require_text(owner, "final_url", self.final_url)
+            if not self.redirect_chain and self.final_url != self.requested_url:
+                raise ModelError(
+                    f"{owner}: final_url must equal requested_url when there is no redirect"
+                )
+            if self.status_code is not None and not 100 <= self.status_code <= 599:
+                raise ModelError(f"{owner}: status_code {self.status_code} is not 100 to 599")
             if self.body_sha256 is not None:
-                raise ModelError(f"{owner}: body_sha256 requires a response (status_code)")
-        elif not 100 <= self.status_code <= 599:
-            raise ModelError(f"{owner}: status_code {self.status_code} is not 100 to 599")
-        if self.body_sha256 is not None and not _SHA256_HEX.fullmatch(self.body_sha256):
-            raise ModelError(f"{owner}: body_sha256 must be 64 lowercase hex characters")
+                _require_sha256(owner, "body_sha256", self.body_sha256)
+        else:
+            if self.final_url is not None:
+                raise ModelError(f"{owner}: final_url must be None when there is no response")
+            if self.body_sha256 is not None:
+                raise ModelError(f"{owner}: body_sha256 requires a response")
 
         if not isinstance(self.fetched_at, datetime) or self.fetched_at.utcoffset() != timedelta(0):
             raise ModelError(f"{owner}: fetched_at must be timezone-aware and in UTC")
@@ -305,3 +433,44 @@ class Receipt:
         :return: The value, or ``None`` if the header was not recorded.
         """
         return dict(self.headers).get(name)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Snapshot:
+    """What the parser derived from one receipt, for comparing runs.
+
+    History compares snapshots, not raw bodies, because a raw body changes
+    whenever a platform rotates an asset hash or a token. Each hash is over
+    normalized text. If the extractor finds no article body,
+    ``content_sha256`` is ``None``, and any change involving the snapshot is
+    ``UNCLASSIFIED``.
+
+    :param receipt_id: The receipt the snapshot was derived from.
+    :param extractor_id: The site-aware extractor used, such as
+        ``dev.article`` or ``wordpress.entry``.
+    :param extractor_version: The version of that extractor.
+    :param content_sha256: SHA-256 of the normalized article body text, or
+        ``None`` if no body was found.
+    :param head_sha256: SHA-256 of the normalized, sorted ``<head>`` metadata
+        (canonical, meta, og:*, JSON-LD, lang, title).
+    :param frame_sha256: SHA-256 of the rest of the page, normalized
+        (navigation, footer, template).
+    :raises ModelError: If an identifier is blank or a hash is malformed.
+    """
+
+    receipt_id: str
+    extractor_id: str
+    extractor_version: str
+    content_sha256: str | None
+    head_sha256: str
+    frame_sha256: str
+
+    def __post_init__(self) -> None:
+        """Validate the snapshot; the class docstring lists what raises ModelError."""
+        owner = f"Snapshot for receipt {self.receipt_id!r}"
+        for name in ("receipt_id", "extractor_id", "extractor_version"):
+            _require_text(owner, name, getattr(self, name))
+        if self.content_sha256 is not None:
+            _require_sha256(owner, "content_sha256", self.content_sha256)
+        _require_sha256(owner, "head_sha256", self.head_sha256)
+        _require_sha256(owner, "frame_sha256", self.frame_sha256)
