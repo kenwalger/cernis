@@ -1,0 +1,70 @@
+[project]
+name = "cernis"
+version = "0.0.1"
+description = "A content discoverability auditor for published articles."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Ken W. Alger" }]
+keywords = ["seo", "metadata", "audit", "canonical", "robots.txt", "articles"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Site Management",
+    "Topic :: Text Processing :: Markup :: HTML",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/kenwalger/cernis"
+Repository = "https://github.com/kenwalger/cernis"
+Issues = "https://github.com/kenwalger/cernis/issues"
+
+[project.scripts]
+cernis = "cernis.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pydoclint>=0.5",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.4,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "D", "ANN", "PT"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D104"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src", "tests"]
+
+[tool.pydoclint]
+style = "sphinx"
+arg-type-hints-in-docstring = false
+check-return-types = false
+exclude = '\.venv'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

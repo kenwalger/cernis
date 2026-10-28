@@ -296,3 +296,5 @@ cython_debug/
 #.idea/
 
 commit-message.txt
+# Agent Quality Gates local ledgers
+.aqg/
