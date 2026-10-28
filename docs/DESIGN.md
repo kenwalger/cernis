@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2 (2026-10-28). Draft 2 answers the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.1 (2026-10-28). Draft 2.1 adds key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -113,6 +113,8 @@ Finding
   would_require      NOT_DETERMINABLE only, when no attempt was possible: the data
                      that would answer the question
 ```
+
+Before hashing, every string in the key is normalized to Unicode NFC. A `target` that is a URL (a link, an image) goes through the same URL normalization as `subject_url`; any other `target` is an identifier Cernis itself supplies (a property name such as `og:image`, a crawler name), drawn from a fixed vocabulary, so it needs no normalization. Key computation must be final before Phase 5 stores any runs, because changing it changes every key.
 
 The `key` leaves out `check_version` on purpose. When a check's version changes, the same key appearing with a different version is how history recognizes a `CHECKER` change instead of a new problem.
 
