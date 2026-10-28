@@ -296,5 +296,7 @@ cython_debug/
 #.idea/
 
 commit-message.txt
+friction_logs/*
+docs/reference/*
 # Agent Quality Gates local ledgers
 .aqg/

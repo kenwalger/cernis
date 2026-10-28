@@ -1,6 +1,6 @@
 [project]
 name = "cernis"
-version = "0.0.1"
+version = "0.1.0.dev0"
 description = "A content discoverability auditor for published articles."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -63,6 +63,7 @@ files = ["src", "tests"]
 style = "sphinx"
 arg-type-hints-in-docstring = false
 check-return-types = false
+check-class-attributes = false
 exclude = '\.venv'
 
 [tool.pytest.ini_options]

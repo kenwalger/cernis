@@ -1,0 +1,72 @@
+# CLAUDE.md
+
+Rules for any session working in this repository.
+
+## Purpose
+
+Cernis is a content discoverability auditor for published articles. Given an article URL, it fetches the page and the things around it, runs deterministic checks, and reports findings backed by evidence. Every finding says whether it was observed, is a recommendation, or cannot be determined, and Cernis never scores a page or predicts an outcome.
+
+## Authority
+
+- `docs/DESIGN.md` is the source of truth. Before changing anything, read `README.md`, then `docs/DESIGN.md` and `docs/adr/`, then `tests/fixtures/README.md`.
+- Do not contradict an ADR. If a task seems to require it, stop and ask.
+- Record each session in `docs/sessions/SESSION-NN.md`: what was built, decisions made, and anything deferred.
+
+## Current stage
+
+**Phase 1 (scaffold) is built (session 1, 2026-10-28).** The finding and receipt model with its status rules (`src/cernis/model.py`, ADR-001), the no-promise checker (`src/cernis/promises.py`), the check registry with every planned check at version 1 and none implemented (`src/cernis/checks/registry.py`), and `cernis checks`.
+
+**Next: Phase 2, the fetcher** (DESIGN.md section 10). Until a session prompt says otherwise, there is no fetching, no parsing, and no network access of any kind.
+
+## Principles (DESIGN.md section 2)
+
+1. Keep what was observed, what is recommended, and what cannot be determined apart. Every finding has a status (`OBSERVED`, `RECOMMENDATION`, `NOT_DETERMINABLE`) and, separately, an actor (`AUTHOR`, `PLATFORM`, `UNKNOWN`).
+2. No scores, grades, or summary numbers.
+3. No predicted outcomes. A recommendation says what to change and why, never what will happen. The no-promise test makes this a build failure.
+4. A defect violates a published standard or the author's stated intent, never a style convention. Lengths are facts, not defects.
+5. Absence is evidence. A check records what it searched for, not only what it found.
+6. Findings are receipts: URL, time, response hash, evidence, and check version.
+7. Deterministic first. No model or LLM in the loop.
+8. Polite by default: the author's own content only, an honest user agent, robots.txt respected, paced requests, a cache.
+
+## Code standards
+
+- Python 3.12+, managed with uv, src layout. American English.
+- All functions, methods, and module-level variables have complete type hints, including return types, in `src/` and `tests/`.
+- Every public module, class, function, and method has a Sphinx-style (reST field list) docstring: `:param name:` for every parameter, `:return:`, `:raises:` for exceptions the caller should handle, no `:rtype:` (hints carry it). Dataclass fields are documented as `:param:` in the class docstring.
+- Configuration is in `pyproject.toml`: ruff (including ANN and D), mypy strict over `src/` and `tests/`, pydoclint in Sphinx style.
+- Model types are frozen dataclasses that validate in `__post_init__` and raise `ModelError` with a message naming the field and the rule.
+- Every recommendation template goes in `cernis.checks.recommendations.TEMPLATES`. The test suite fails on a template defined anywhere else, and on any template that contains outcome language.
+- Bump a check's `version` in the registry whenever its behavior changes.
+
+## Tests
+
+- Tests never touch the network.
+- Fixtures are synthetic and hand-written, never captured from real pages (`tests/fixtures/README.md`).
+- All of these must pass before finishing:
+  1. `uv run ruff check .`
+  2. `uv run ruff format --check .`
+  3. `uv run mypy --strict`
+  4. `uv run pydoclint src tests`
+  5. `uv run pytest`
+  6. `uv run --isolated --python 3.12 pytest` (the declared floor; the project venv may run a newer Python)
+
+## SDK friction
+
+Cernis is a real-world test of the Sovereign Systems SDK. Record every rough edge in the SDK in `docs/SDK-FRICTION.md` when it happens.
+
+## Credentials
+
+Never read or print `.env` files or tokens. Cernis needs no credentials in the MVP.
+
+## Writing
+
+No em-dashes in any prose, docs, code comments, commit messages, or generated reports. Use a colon, comma, parentheses, or a new sentence instead.
+
+## Attribution
+
+Do not add AI attribution anywhere: no `Co-Authored-By` trailers, "Generated with" lines, session links, or similar credits in code comments or commit messages.
+
+## Git workflow
+
+Never commit. The author commits. Write the message to `commit-message.txt` and stop.
