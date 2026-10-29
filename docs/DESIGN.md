@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.2 (2026-10-29). Draft 2.2 records the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.3 (2026-10-29). Draft 2.3 adds the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -72,6 +72,7 @@ Reason codes for `NOT_DETERMINABLE`:
 | `ACCESS_DENIED` | 401 or 403. A 403 is not a broken link; it is an unanswered question. |
 | `RATE_LIMITED` | 429, after retrying with backoff (honoring `Retry-After`) and still being refused. Temporary by nature, so a later run may answer it. |
 | `DISALLOWED_BY_ROBOTS` | Cernis's own user agent is disallowed, so it did not look. |
+| `ADDRESS_REFUSED` | The URL's host resolves to a non-public address (an internal network, loopback, or a cloud metadata service), so Cernis refused to contact it. A link to an internal address is a question Cernis declines to answer, not a broken link. |
 | `REQUIRES_RENDERING` | The content only exists after JavaScript runs. The MVP has no headless browser. |
 | `AMBIGUOUS` | The evidence supports more than one reading (for example, two different canonical URLs). |
 
@@ -130,7 +131,9 @@ Receipt
   redirect_chain
   status_code        the status received, kept even if the body then failed (ADR-004);
                      None only if no response arrived
-  error_kind         NONE | TIMEOUT | CONNECTION | TLS | TOO_MANY_REDIRECTS
+  error_kind         NONE | TIMEOUT | CONNECTION | TLS | TOO_MANY_REDIRECTS |
+                     ADDRESS_REFUSED (the host resolved to a non-public address and
+                     was never contacted; ADR-005)
   fetched_at         UTC, taken when the request is actually sent (after any pacing wait)
   body_sha256        of the decoded response body (None if no complete body)
   body_truncated_at  the size limit, if reading stopped there (ADR-003); otherwise None
@@ -287,7 +290,8 @@ tests/
 - Afterword's standards: strict mypy, ruff, pydoclint, Sphinx-style docstrings, type hints throughout
 - **httpx** for fetching
 - **selectolax** for HTML parsing (lxml as the fallback if selectolax misses something)
-- **urllib.robotparser** from the standard library
+- **Cernis's own RFC 9309 robots.txt matcher** (`rfc9309.py`, versioned), replacing `urllib.robotparser`, whose results differ between Python versions
+- **httpcore** as a declared dependency, for the address-pinned network backend (ADR-005)
 - **argparse** for the CLI
 - **sovereign-ledger** for the receipt store, behind the `ReceiptStore` protocol
 - Apache-2.0
