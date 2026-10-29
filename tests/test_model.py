@@ -474,9 +474,7 @@ def test_receipt_failed_request_must_name_the_url_that_failed(kind: ErrorKind) -
         no_response(error_kind=kind, final_url=None)
 
 
-@pytest.mark.parametrize(
-    "kind", sorted(set(ErrorKind) - {ErrorKind.NONE, ErrorKind.TOO_MANY_REDIRECTS})
-)
+@pytest.mark.parametrize("kind", [ErrorKind.TIMEOUT, ErrorKind.CONNECTION, ErrorKind.TLS])
 def test_receipt_keeps_a_response_whose_body_failed(kind: ErrorKind) -> None:
     """ADR-004: a status and headers that arrived before the body failed are kept."""
     built = no_response(error_kind=kind, status_code=200, headers=(("content-type", "text/html"),))
@@ -578,14 +576,31 @@ def test_receipt_response_without_final_url_is_rejected() -> None:
 
 
 def test_error_kinds_match_design() -> None:
-    """The error kinds are exactly those in DESIGN.md section 3."""
+    """The error kinds are those in DESIGN.md section 3, plus ADDRESS_REFUSED (ADR-005)."""
     assert {kind.value for kind in ErrorKind} == {
         "NONE",
         "TIMEOUT",
         "CONNECTION",
         "TLS",
         "TOO_MANY_REDIRECTS",
+        "ADDRESS_REFUSED",
     }
+
+
+def test_receipt_address_refused_names_the_url_and_has_no_status() -> None:
+    """ADR-005: a refused address was never contacted, so there is no status or header."""
+    built = no_response(error_kind=ErrorKind.ADDRESS_REFUSED)
+    assert (built.final_url, built.status_code, built.headers) == (
+        "https://example.com/post",
+        None,
+        (),
+    )
+
+
+def test_receipt_address_refused_with_a_status_is_rejected() -> None:
+    """Nothing was sent to a refused address, so nothing can have answered."""
+    with pytest.raises(ModelError, match="error_kind"):
+        no_response(error_kind=ErrorKind.ADDRESS_REFUSED, status_code=200)
 
 
 @pytest.mark.parametrize("code", [99, 600])

@@ -34,6 +34,20 @@ uses [Semantic Versioning](https://semver.org/).
   body failed (ADR-004).
 - `cernis fetch <url> [--format text|json] [--cache-dir PATH]`.
 - httpx is the first runtime dependency.
+- An address screen (ADR-005): before every hop, Cernis refuses hosts that
+  resolve to loopback, private, link-local (cloud metadata), carrier-grade
+  NAT, or other non-public addresses, and connects only to the addresses it
+  screened. A refusal is an `ADDRESS_REFUSED` receipt with a reason.
+  `cernis fetch --allow-loopback` allows loopback only, for testing.
+- Cernis's own RFC 9309 matcher (`cernis.fetch.rfc9309`, version 1)
+  replaces `urllib.robotparser`: group selection by product token, longest
+  match, Allow winning ties, `*` and `$`, and percent-encoding
+  normalization, the same on every supported Python. Robots decisions record
+  the deciding rule and the matcher version.
+- An overall deadline per request (`total_timeout`), headers included.
+- A 429 robots.txt disallows everything, a deliberate departure from
+  RFC 9309 (ADR-006).
+- httpcore is a declared dependency, and httpx is held below 0.29.
 
 ## [0.0.1] - 2026-10-28
 

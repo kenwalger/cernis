@@ -77,6 +77,8 @@ class ErrorKind(StrEnum):
     CONNECTION = "CONNECTION"
     TLS = "TLS"
     TOO_MANY_REDIRECTS = "TOO_MANY_REDIRECTS"
+    ADDRESS_REFUSED = "ADDRESS_REFUSED"
+    """The host resolved to an address that is not public, so nothing was sent (ADR-005)."""
 
 
 class ChangeClass(StrEnum):
@@ -331,6 +333,9 @@ class Receipt:
       and headers arrived before the body failed, ``status_code`` and
       ``headers`` keep them; otherwise ``status_code`` is ``None`` and there
       are no headers. ``body_sha256`` is ``None``.
+    - ``ADDRESS_REFUSED``: the URL's host resolved to an address that is
+      not public, so nothing was sent (ADR-005). ``final_url`` names the
+      refused URL; ``status_code`` is ``None``.
     - ``TOO_MANY_REDIRECTS``: the redirect limit was reached, so there is no
       final response. ``status_code``, ``final_url``, and ``body_sha256`` are
       ``None``, and ``redirect_chain`` holds every URL that redirected.
@@ -403,7 +408,8 @@ class Receipt:
         too_many = self.error_kind is ErrorKind.TOO_MANY_REDIRECTS
         if succeeded and self.status_code is None:
             raise ModelError(f"{owner}: error_kind NONE requires a status_code")
-        if too_many and self.status_code is not None:
+        refused = self.error_kind is ErrorKind.ADDRESS_REFUSED
+        if (too_many or refused) and self.status_code is not None:
             raise ModelError(f"{owner}: error_kind {self.error_kind} requires no status_code")
         if self.status_code is not None and not 100 <= self.status_code <= 599:
             raise ModelError(f"{owner}: status_code {self.status_code} is not 100 to 599")

@@ -12,7 +12,16 @@ from pathlib import Path
 
 import httpx
 import pytest
-from fetch_support import FIXED_NOW, ChunkStream, FakeTime, Site, make_fetcher, redirect, respond
+from fetch_support import (
+    FIXED_NOW,
+    ChunkStream,
+    FakeResolver,
+    FakeTime,
+    Site,
+    make_fetcher,
+    redirect,
+    respond,
+)
 
 from cernis import REPOSITORY_URL, __version__
 from cernis.fetch import USER_AGENT, FetchConfig, Fetcher, FetchError
@@ -726,6 +735,7 @@ def test_fetched_at_is_when_the_first_request_was_sent_after_pacing(tmp_path: Pa
         clock=time.clock,
         sleep=time.sleep,
         now=lambda: FIXED_NOW + timedelta(seconds=time.now),
+        resolver=FakeResolver(),
     )
 
     result = fetcher.fetch(PAGE)

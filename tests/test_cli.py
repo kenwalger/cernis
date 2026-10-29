@@ -9,13 +9,14 @@ from pathlib import Path
 
 import httpx
 import pytest
-from fetch_support import FIXED_NOW, Site, respond
+from fetch_support import FIXED_NOW, FakeResolver, Site, respond
 
 from cernis import REPOSITORY_URL, __version__, cli
 from cernis.checks.registry import CHECKS
 from cernis.cli import main
 from cernis.fetch import USER_AGENT, FetchConfig, Fetcher
 from cernis.fetch.cache import DEFAULT_CACHE_DIR
+from cernis.fetch.rfc9309 import MATCHER_VERSION
 
 
 def test_version_flag_prints_name_and_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -95,22 +96,30 @@ def test_checks_rejects_unknown_format(capsys: pytest.CaptureFixture[str]) -> No
 # cernis fetch
 
 
-def _scripted_fetcher(monkeypatch: pytest.MonkeyPatch, site: Site) -> None:
+def _scripted_fetcher(
+    monkeypatch: pytest.MonkeyPatch, site: Site, resolver: FakeResolver | None = None
+) -> list[FetchConfig]:
     """Make ``cernis fetch`` use a scripted web and skip pacing waits.
 
     :param monkeypatch: Used to replace the CLI's fetcher.
     :param site: The scripted web.
+    :param resolver: The fake resolver; a new one if ``None``.
+    :return: The configurations the CLI built, one per fetch.
     """
+    configs: list[FetchConfig] = []
 
     def build(config: FetchConfig) -> Fetcher:
+        configs.append(config)
         return Fetcher(
             config,
             transport=httpx.MockTransport(site.handler),
             sleep=lambda seconds: None,
             now=lambda: FIXED_NOW,
+            resolver=resolver or FakeResolver(),
         )
 
     monkeypatch.setattr(cli, "Fetcher", build)
+    return configs
 
 
 def test_fetch_prints_receipts_as_json(
@@ -136,8 +145,11 @@ def test_fetch_prints_receipts_as_json(
             "allowed": True,
             "basis": "UNAVAILABLE",
             "receipt_id": "r-001",
+            "rule": None,
+            "matcher_version": MATCHER_VERSION,
         }
     ]
+    assert payload["refusals"] == []
     assert [r["status_code"] for r in payload["robots_receipts"]] == [404]
     (receipt,) = payload["receipts"]
     assert receipt == {
@@ -210,3 +222,48 @@ def test_fetch_defaults_to_the_git_ignored_cache_directory() -> None:
 
     assert args.cache_dir == DEFAULT_CACHE_DIR
     assert args.format == "text"
+
+
+def test_fetch_reports_a_refused_address(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A refusal prints its receipt and its reason, in text and in JSON."""
+    resolver = FakeResolver({"example.com": ["169.254.169.254"]})
+    _scripted_fetcher(monkeypatch, Site(), resolver)
+
+    assert main(["fetch", "https://example.com/post", "--cache-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "  error_kind: ADDRESS_REFUSED" in out
+    assert (
+        "refused (r-001): https://example.com/post: example.com resolves to 169.254.169.254" in out
+    )
+
+    main(["fetch", "https://example.com/post", "--format", "json", "--cache-dir", str(tmp_path)])
+    (refusal,) = json.loads(capsys.readouterr().out)["refusals"]
+    assert refusal["receipt_id"] == "r-001"
+    assert "link-local" in refusal["reason"]
+
+
+def test_fetch_allow_loopback_reaches_the_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--allow-loopback turns on the opt-in; without it, loopback stays refused."""
+    configs = _scripted_fetcher(monkeypatch, Site())
+
+    main(["fetch", "http://127.0.0.1/", "--cache-dir", str(tmp_path)])
+    main(["fetch", "http://127.0.0.1/", "--allow-loopback", "--cache-dir", str(tmp_path)])
+
+    assert [config.allow_loopback for config in configs] == [False, True]
+
+
+def test_fetch_text_names_the_deciding_rule(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The text output shows which robots.txt rule decided."""
+    site = Site()
+    site.add("https://example.com/robots.txt", respond(200, b"User-agent: *\nDisallow: /post\n"))
+    _scripted_fetcher(monkeypatch, site)
+
+    main(["fetch", "https://example.com/post", "--cache-dir", str(tmp_path)])
+
+    assert "disallowed (RULES, r-001) by 'Disallow: /post'" in capsys.readouterr().out

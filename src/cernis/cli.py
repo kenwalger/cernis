@@ -70,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CACHE_DIR,
         help=f"cache directory for conditional requests (default: {DEFAULT_CACHE_DIR})",
     )
+    fetch.add_argument(
+        "--allow-loopback",
+        action="store_true",
+        help=(
+            "allow loopback addresses (127.0.0.0/8, ::1), for testing against a local "
+            "server; every other non-public address is still refused"
+        ),
+    )
     return parser
 
 
@@ -147,6 +155,8 @@ def _decision_as_dict(decision: RobotsDecision) -> dict[str, object]:
         "allowed": decision.allowed,
         "basis": decision.basis.value,
         "receipt_id": decision.receipt_id,
+        "rule": decision.rule,
+        "matcher_version": decision.matcher_version,
     }
 
 
@@ -154,7 +164,8 @@ def format_fetch_json(result: FetchResult) -> str:
     """Render a fetch result as JSON.
 
     :param result: The result.
-    :return: A JSON object with the robots decisions and every receipt.
+    :return: A JSON object with the robots decisions, every receipt, and the
+        reason for each refused address.
     """
     payload = {
         "cernis_version": __version__,
@@ -163,6 +174,10 @@ def format_fetch_json(result: FetchResult) -> str:
         "robots": [_decision_as_dict(decision) for decision in result.robots],
         "robots_receipts": [receipt_as_dict(receipt) for receipt in result.robots_receipts],
         "receipts": [receipt_as_dict(receipt) for receipt in result.receipts],
+        "refusals": [
+            {"receipt_id": refusal.receipt_id, "url": refusal.url, "reason": refusal.reason}
+            for refusal in result.refusals
+        ],
     }
     return json.dumps(payload, indent=2)
 
@@ -197,27 +212,32 @@ def format_fetch_text(result: FetchResult) -> str:
         lines += _format_receipt_text(receipt, "robots.txt")
     for decision in result.robots:
         verdict = "allowed" if decision.allowed else "disallowed"
-        lines.append(
-            f"robots: {decision.url} {verdict} ({decision.basis.value}, {decision.receipt_id})"
-        )
+        line = f"robots: {decision.url} {verdict} ({decision.basis.value}, {decision.receipt_id})"
+        if decision.rule is not None:
+            line += f" by {decision.rule!r}"
+        lines.append(line)
     for number, receipt in enumerate(result.receipts, start=1):
         lines += _format_receipt_text(receipt, f"attempt {number}")
+    for refusal in result.refusals:
+        lines.append(f"refused ({refusal.receipt_id}): {refusal.url}: {refusal.reason}")
     if result.disallowed_url is not None:
         lines.append(f"not fetched: robots.txt disallows {result.disallowed_url}")
     return "\n".join(lines)
 
 
-def run_fetch(url: str, cache_dir: Path, output_format: str) -> int:
+def run_fetch(url: str, cache_dir: Path, output_format: str, allow_loopback: bool = False) -> int:
     """Fetch one URL and print the result.
 
     :param url: The URL.
     :param cache_dir: The cache directory.
     :param output_format: ``text`` or ``json``.
+    :param allow_loopback: Whether loopback addresses are allowed.
     :return: The exit code: 0 when the fetch ran (whatever it found), 2 when
         the URL cannot be fetched at all.
     """
     try:
-        with Fetcher(FetchConfig(cache_dir=cache_dir)) as fetcher:
+        config = FetchConfig(cache_dir=cache_dir, allow_loopback=allow_loopback)
+        with Fetcher(config) as fetcher:
             result = fetcher.fetch(url)
     except FetchError as exc:
         print(f"cernis fetch: {exc}", file=sys.stderr)
@@ -241,6 +261,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(format_checks_table(CHECKS))
         return 0
     if args.command == "fetch":
-        return run_fetch(args.url, args.cache_dir, args.format)
+        return run_fetch(args.url, args.cache_dir, args.format, args.allow_loopback)
     print(STATUS_MESSAGE)
     return 0

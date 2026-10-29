@@ -5,31 +5,26 @@ once per origin per run, and the fetch is a receipt like any other.
 
 How the robots.txt response is read (RFC 9309 section 2.3.1):
 
-- ``2xx``, or a ``304`` validating a cached copy: the rules are parsed with
-  :mod:`urllib.robotparser` and applied to Cernis's user agent.
+- ``2xx``, or a ``304`` validating a cached copy: the rules are parsed by
+  Cernis's own matcher (:mod:`cernis.fetch.rfc9309`) and applied to
+  Cernis's product token.
 - ``4xx`` other than ``429``: robots.txt is unavailable, so everything is
   allowed (section 2.3.1.3).
 - ``5xx``, ``429``, any fetch with no response, and any other status:
   robots.txt is unreachable, so everything is disallowed (section 2.3.1.4).
-  RFC 9309 counts ``429`` as a 4xx, but a server that is rate limiting
-  Cernis has not said it may crawl; treating it as unreachable is the polite
-  reading (SESSION-03.md decision 4).
+  RFC 9309 counts ``429`` as a 4xx; Cernis departs from it here on purpose,
+  for politeness (ADR-006).
 
-Rule matching is :mod:`urllib.robotparser`'s, as DESIGN.md section 6
-specifies, and it depends on the Python version. On 3.14 the most specific
-rule wins and ``*`` and ``$`` are honored, as RFC 9309 section 2.2 requires;
-on 3.12 and 3.13 the first matching rule in file order wins and ``*`` and
-``$`` are literal characters. The same robots.txt can therefore get a
-different decision on a different Python. SESSION-03.md decision 5 records
-this for an Owner decision before Phase 4.
+Rules are matched against the path and query exactly as the request sends
+them: the URL in httpx's normalized form, still percent-encoded.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
-from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from cernis.fetch.rfc9309 import MATCHER_VERSION, RobotsRules
 from cernis.model import ErrorKind, Receipt
 
 
@@ -54,6 +49,10 @@ class RobotsDecision:
     :param basis: What the decision rests on.
     :param receipt_id: The receipt of the robots.txt fetch the decision rests
         on (the last attempt, when the fetch was retried).
+    :param rule: For ``RULES``, the rule that decided, as written (such as
+        ``Disallow: /private/``), or ``None`` if no rule matched.
+    :param matcher_version: The :data:`~cernis.fetch.rfc9309.MATCHER_VERSION`
+        that made the decision.
     """
 
     url: str
@@ -61,6 +60,8 @@ class RobotsDecision:
     allowed: bool
     basis: RobotsBasis
     receipt_id: str
+    rule: str | None = None
+    matcher_version: str = MATCHER_VERSION
 
 
 def robots_url_for(url: str) -> str:
@@ -72,6 +73,15 @@ def robots_url_for(url: str) -> str:
     """
     parsed = httpx.URL(url)
     return str(parsed.copy_with(userinfo=b"", path="/robots.txt", query=None, fragment=None))
+
+
+def product_token(user_agent: str) -> str:
+    """Return the product token of a user agent: the part before the first ``/``.
+
+    :param user_agent: The user agent, such as ``Cernis/0.1.0 (+https://...)``.
+    :return: The product token, such as ``Cernis``.
+    """
+    return user_agent.split("/", 1)[0].strip()
 
 
 class RobotsPolicy:
@@ -86,7 +96,7 @@ class RobotsPolicy:
     def __init__(self, robots_url: str, receipt: Receipt, body: bytes | None) -> None:
         self.robots_url = robots_url
         self.receipt_id = receipt.id
-        self._parser: RobotFileParser | None = None
+        self._rules: RobotsRules | None = None
         status = receipt.status_code
         if receipt.error_kind is not ErrorKind.NONE or status is None:
             self.basis = RobotsBasis.UNREACHABLE
@@ -96,9 +106,8 @@ class RobotsPolicy:
             if receipt.body_truncated_at is not None:
                 # The last line was cut off at the limit; a partial rule is not a rule.
                 rules = rules[: rules.rfind(b"\n") + 1]
-            text = rules.decode("utf-8", errors="replace").removeprefix("\ufeff")
-            self._parser = RobotFileParser()
-            self._parser.parse(text.splitlines())
+            text = rules.decode("utf-8", errors="replace").removeprefix("﻿")
+            self._rules = RobotsRules.parse(text)
         elif 400 <= status <= 499 and status != 429:
             self.basis = RobotsBasis.UNAVAILABLE
         else:
@@ -107,13 +116,14 @@ class RobotsPolicy:
     def decide(self, url: str, user_agent: str) -> RobotsDecision:
         """Decide whether ``user_agent`` may fetch ``url``.
 
-        :param url: A URL on this policy's origin.
-        :param user_agent: The full user agent; :mod:`urllib.robotparser`
-            matches its product token (the part before the first ``/``).
+        :param url: A URL on this policy's origin, in httpx's normalized form.
+        :param user_agent: The full user agent; its product token is matched.
         :return: The decision.
         """
-        if self._parser is not None:
-            allowed = self._parser.can_fetch(user_agent, url)
+        rule = None
+        if self._rules is not None:
+            verdict = self._rules.check(product_token(user_agent), _path_as_sent(url))
+            allowed, rule = verdict.allowed, verdict.rule
         else:
             allowed = self.basis is RobotsBasis.UNAVAILABLE
         return RobotsDecision(
@@ -122,4 +132,14 @@ class RobotsPolicy:
             allowed=allowed,
             basis=self.basis,
             receipt_id=self.receipt_id,
+            rule=rule,
         )
+
+
+def _path_as_sent(url: str) -> str:
+    """Return the path and query a request for ``url`` sends.
+
+    :param url: An absolute URL.
+    :return: The request target, percent-encoded, without the fragment.
+    """
+    return httpx.URL(url).raw_path.decode("ascii")

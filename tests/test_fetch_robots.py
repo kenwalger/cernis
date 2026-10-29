@@ -1,7 +1,6 @@
 """Tests for robots.txt handling: RFC 9309 status rules, once per origin, and redirects."""
 
 import ssl
-import sys
 from pathlib import Path
 
 import httpx
@@ -9,7 +8,8 @@ import pytest
 from fetch_support import Site, make_fetcher, redirect, respond
 
 from cernis.fetch import RobotsBasis
-from cernis.fetch.robots import robots_url_for
+from cernis.fetch.rfc9309 import MATCHER_VERSION
+from cernis.fetch.robots import product_token, robots_url_for
 from cernis.model import ErrorKind
 
 ROBOTS = "https://example.com/robots.txt"
@@ -292,20 +292,11 @@ def test_robots_url_is_per_origin(url: str, robots_url: str) -> None:
     assert robots_url_for(url) == robots_url
 
 
-# urllib.robotparser's matching changed in Python 3.14. These two tests pin
-# the RFC 9309 answer on 3.14 and the older behavior on 3.12 and 3.13, so a
-# change on either side is noticed (SESSION-03.md decision 5).
-OLD_ROBOTPARSER = sys.version_info < (3, 14)
+# Matching is Cernis's own (rfc9309.py), so these give the same answer on
+# every supported Python. tests/test_fetch_rfc9309.py covers the matcher in
+# detail; these check the fetcher uses it.
 
 
-@pytest.mark.xfail(
-    OLD_ROBOTPARSER,
-    strict=True,
-    reason=(
-        "before Python 3.14, urllib.robotparser applies the first matching rule, "
-        "not the longest (RFC 9309 section 2.2.2)"
-    ),
-)
 def test_the_longest_match_wins(tmp_path: Path) -> None:
     """RFC 9309: the most specific rule wins, so a longer Allow beats a shorter Disallow."""
     site = Site()
@@ -314,16 +305,9 @@ def test_the_longest_match_wins(tmp_path: Path) -> None:
     result = make_fetcher(site, tmp_path).fetch(PAGE)
 
     assert result.robots[0].allowed
+    assert result.robots[0].rule == "Allow: /post"
 
 
-@pytest.mark.xfail(
-    OLD_ROBOTPARSER,
-    strict=True,
-    reason=(
-        "before Python 3.14, urllib.robotparser does not support the * and $ "
-        "special characters (RFC 9309 section 2.2.3)"
-    ),
-)
 @pytest.mark.parametrize(
     ("rule", "url"),
     [("/*st", PAGE), ("/*.pdf$", "https://example.com/paper.pdf")],
@@ -336,3 +320,58 @@ def test_wildcards_are_honored(tmp_path: Path, rule: str, url: str) -> None:
     result = make_fetcher(site, tmp_path).fetch(url)
 
     assert not result.robots[0].allowed
+
+
+def test_a_substring_of_cernis_is_not_cernis(tmp_path: Path) -> None:
+    """A group for ``e`` does not apply to Cernis (urllib.robotparser matched substrings)."""
+    site = Site()
+    site.add(ROBOTS, respond(200, b"User-agent: e\nDisallow: /\n"))
+
+    result = make_fetcher(site, tmp_path).fetch(PAGE)
+
+    assert result.robots[0].allowed
+
+
+def test_rules_match_the_path_as_sent(tmp_path: Path) -> None:
+    """A rule for an encoded path matches the URL httpx sends, however it was typed."""
+    site = Site()
+    site.add(ROBOTS, respond(200, "User-agent: *\nDisallow: /caf\u00e9\n".encode()))
+
+    result = make_fetcher(site, tmp_path).fetch("https://example.com/caf%C3%A9/menu")
+
+    assert not result.robots[0].allowed
+    assert result.robots[0].rule == "Disallow: /caf\u00e9"
+
+
+def test_each_decision_carries_the_matcher_version(tmp_path: Path) -> None:
+    """A decision says which matcher version made it, so a matcher change is visible."""
+    site = Site()
+    site.add(ROBOTS, respond(200, b"User-agent: *\nDisallow: /private\n"))
+
+    result = make_fetcher(site, tmp_path).fetch(PAGE)
+
+    assert result.robots[0].matcher_version == MATCHER_VERSION
+    assert result.robots[0].rule is None
+
+
+def test_the_product_token_is_the_user_agent_before_the_slash() -> None:
+    """Cernis's product token is ``Cernis``."""
+    assert product_token("Cernis/0.1.0 (+https://github.com/kenwalger/cernis)") == "Cernis"
+
+
+def test_a_429_robots_txt_disallows_everything(tmp_path: Path) -> None:
+    """ADR-006: a robots.txt still answering 429 after retries is unreachable, not unavailable.
+
+    RFC 9309 would allow everything for any 4xx; Cernis departs from it here, on purpose.
+    """
+    site = Site()
+    site.add(ROBOTS, respond(429, headers={"retry-after": "1"}))
+    site.add(PAGE, respond(200))
+
+    result = make_fetcher(site, tmp_path, min_interval=0).fetch(PAGE)
+
+    assert [r.status_code for r in result.robots_receipts] == [429, 429, 429]
+    assert [r.header("retry-after") for r in result.robots_receipts] == ["1", "1", "1"]
+    assert [(d.allowed, d.basis) for d in result.robots] == [(False, RobotsBasis.UNREACHABLE)]
+    assert result.disallowed_url == PAGE
+    assert PAGE not in site.urls()

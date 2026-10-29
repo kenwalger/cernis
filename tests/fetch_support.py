@@ -1,5 +1,6 @@
 """Fakes for the fetcher tests: a scripted web, and time that passes only on demand."""
 
+import ipaddress
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -12,6 +13,9 @@ from cernis.fetch import FetchConfig, Fetcher
 
 FIXED_NOW = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
 """The wall-clock time every fake fetch happens at."""
+
+PUBLIC_ADDRESS = "203.0.113.10"
+"""What every fake host resolves to unless a test says otherwise (TEST-NET-3, public)."""
 
 
 class ConfigOverrides(TypedDict, total=False):
@@ -26,6 +30,7 @@ class ConfigOverrides(TypedDict, total=False):
     max_attempts: int
     backoff_base: float
     backoff_cap: float
+    allow_loopback: bool
 
 
 Reply = Callable[[httpx.Request], httpx.Response] | BaseException
@@ -148,6 +153,40 @@ class Site:
 
 
 @dataclass
+class FakeResolver:
+    """A resolver for the address screen that never touches DNS.
+
+    :param addresses: Addresses by host. An IP literal resolves to itself and
+        any other host to :data:`PUBLIC_ADDRESS`, unless listed here. An empty
+        list means the host does not resolve.
+    :param lookups: Every ``(host, port)`` looked up, in order.
+    """
+
+    addresses: dict[str, list[str]] = field(default_factory=dict)
+    lookups: list[tuple[str, int]] = field(default_factory=list)
+
+    def __call__(self, host: str, port: int) -> list[str]:
+        """Resolve a host.
+
+        :param host: The host.
+        :param port: The port.
+        :return: Its addresses.
+        :raises OSError: If the host is mapped to no addresses.
+        """
+        self.lookups.append((host, port))
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            return self.addresses.get(host, [host])
+        found = self.addresses.get(host, [PUBLIC_ADDRESS])
+        if not found:
+            raise OSError(f"{host} does not resolve")
+        return found
+
+
+@dataclass
 class FakeTime:
     """A monotonic clock that moves only when something sleeps or a test advances it.
 
@@ -178,6 +217,7 @@ def make_fetcher(
     site: Site,
     cache_dir: Path | None,
     time: FakeTime | None = None,
+    resolver: FakeResolver | None = None,
     **config: Unpack[ConfigOverrides],
 ) -> Fetcher:
     """Build a fetcher on a scripted web with fake time.
@@ -185,6 +225,7 @@ def make_fetcher(
     :param site: The scripted web.
     :param cache_dir: The cache directory, or ``None`` for no cache.
     :param time: The fake time; a new one if ``None``.
+    :param resolver: The fake resolver; a new one if ``None``.
     :param **config: Other :class:`FetchConfig` settings.
     :return: The fetcher.
     """
@@ -195,4 +236,5 @@ def make_fetcher(
         clock=time.clock,
         sleep=time.sleep,
         now=lambda: FIXED_NOW,
+        resolver=resolver or FakeResolver(),
     )

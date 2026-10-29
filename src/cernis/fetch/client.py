@@ -37,6 +37,16 @@ Nothing is parsed here except robots.txt.
   not offer or that does not decode, is ``CONNECTION``. The receipt names
   the URL whose request failed, and keeps the status and headers when they
   arrived before the body failed (ADR-004).
+- **Addresses** (ADR-005): before every hop, robots.txt and redirects
+  included, the host is resolved and every address it resolves to is
+  screened. Any non-public address refuses the hop: no request is sent, and
+  the receipt is ``ADDRESS_REFUSED`` with the reason in
+  :attr:`FetchResult.refusals`. With the default transport the connection
+  is made only to the screened addresses (:mod:`cernis.fetch.network`).
+  ``allow_loopback`` opens loopback only, for testing.
+- **Deadline**: ``total_timeout`` bounds the whole request, headers
+  included; with the default transport every socket read and write is held
+  to the time left.
 - **Pacing**: at most one request per ``min_interval`` seconds per host,
   counting robots.txt and every redirect hop.
 - **Cache**: a ``200`` with an ``ETag`` or ``Last-Modified`` is cached, and
@@ -61,10 +71,19 @@ from pathlib import Path
 from types import TracebackType
 from typing import Self
 
+import httpcore
 import httpx
 
 from cernis import REPOSITORY_URL, __version__
+from cernis.fetch.addresses import refusal_reason
 from cernis.fetch.cache import DEFAULT_CACHE_DIR, Cache, CacheEntry
+from cernis.fetch.network import (
+    AddressRefusedError,
+    GuardedTransport,
+    Resolver,
+    RunNetwork,
+    system_resolve,
+)
 from cernis.fetch.pacing import Pacer
 from cernis.fetch.robots import RobotsDecision, RobotsPolicy, robots_url_for
 from cernis.model import RECORDED_HEADERS, ErrorKind, Receipt
@@ -105,6 +124,9 @@ class FetchConfig:
     :param backoff_cap: The longest wait before a retry. A longer
         ``Retry-After`` stops the retries.
     :param cache_dir: The cache directory, or ``None`` for no cache.
+    :param allow_loopback: Allow loopback addresses (``127.0.0.0/8``,
+        ``::1``), for testing against a local server. Every other non-public
+        address is refused regardless (ADR-005).
     :raises ValueError: If a setting is out of range.
     """
 
@@ -118,6 +140,7 @@ class FetchConfig:
     backoff_base: float = 1.0
     backoff_cap: float = 60.0
     cache_dir: Path | None = field(default=DEFAULT_CACHE_DIR)
+    allow_loopback: bool = False
 
     def __post_init__(self) -> None:
         """Check every setting.
@@ -139,6 +162,22 @@ class FetchConfig:
 
 
 @dataclass(frozen=True, kw_only=True)
+class AddressRefusal:
+    """Why a hop was refused before anything was sent (ADR-005).
+
+    :param receipt_id: The ``ADDRESS_REFUSED`` receipt.
+    :param url: The URL that was refused.
+    :param reason: The address and the range it is in, such as
+        ``169.254.169.254 is link-local, including cloud metadata
+        (169.254.0.0/16)``.
+    """
+
+    receipt_id: str
+    url: str
+    reason: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class FetchResult:
     """Everything one :meth:`Fetcher.fetch` call did.
 
@@ -155,6 +194,8 @@ class FetchResult:
         nothing was disallowed.
     :param body: The last attempt's body as read (at most the size limit);
         for a ``304``, the cached body. ``None`` if there was none.
+    :param refusals: The reason for each ``ADDRESS_REFUSED`` receipt in
+        ``receipts`` and ``robots_receipts``.
     """
 
     requested_url: str
@@ -163,6 +204,7 @@ class FetchResult:
     robots: tuple[RobotsDecision, ...]
     disallowed_url: str | None
     body: bytes | None
+    refusals: tuple[AddressRefusal, ...] = ()
 
     @property
     def final(self) -> Receipt | None:
@@ -188,6 +230,7 @@ class _Exchange:
     :param body: The body as read, or ``None``.
     :param body_sha256: The hash for the receipt, or ``None``.
     :param truncated: Whether the body was cut off at the limit.
+    :param refusal: For ``ADDRESS_REFUSED``, why.
     """
 
     sent_at: datetime
@@ -198,6 +241,7 @@ class _Exchange:
     body: bytes | None = None
     body_sha256: str | None = None
     truncated: bool = False
+    refusal: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -423,6 +467,11 @@ class Fetcher:
     :param sleep: Sleeps for the given number of seconds.
     :param now: The current time, timezone-aware, in UTC, for receipts and
         ``Retry-After`` dates.
+    :param resolver: Resolves a host to its addresses for the address
+        screen; tests pass a fake.
+    :param network_backend: The httpcore backend under the default
+        transport, which opens sockets; tests pass a fake. Ignored when
+        ``transport`` is given.
     """
 
     def __init__(
@@ -433,8 +482,13 @@ class Fetcher:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        resolver: Resolver = system_resolve,
+        network_backend: httpcore.NetworkBackend | None = None,
     ) -> None:
         self.config = config or FetchConfig()
+        self._resolve = resolver
+        self._network = RunNetwork(clock=clock)
+        self._refusals: dict[str, AddressRefusal] = {}
         self._clock = clock
         self._sleep = sleep
         self._now = now
@@ -447,7 +501,9 @@ class Fetcher:
         # An empty allowed_domains list makes the jar refuse every cookie.
         jar = http.cookiejar.CookieJar(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
         self._client = httpx.Client(
-            transport=_LocationHidingTransport(transport or httpx.HTTPTransport(trust_env=False)),
+            transport=_LocationHidingTransport(
+                transport or GuardedTransport(self._network, network_backend)
+            ),
             timeout=httpx.Timeout(self.config.read_timeout, connect=self.config.connect_timeout),
             follow_redirects=False,
             headers={"User-Agent": USER_AGENT, "Accept-Encoding": ACCEPT_ENCODING},
@@ -499,6 +555,11 @@ class Fetcher:
         robots_receipts: list[Receipt] = []
         for robots_url in dict.fromkeys(decision.robots_url for decision in decisions):
             robots_receipts.extend(self._robots[robots_url][1])
+        refusals = tuple(
+            self._refusals[receipt.id]
+            for receipt in (*robots_receipts, *receipts)
+            if receipt.id in self._refusals
+        )
         return FetchResult(
             requested_url=url,
             receipts=receipts,
@@ -506,6 +567,7 @@ class Fetcher:
             robots=tuple(decisions),
             disallowed_url=disallowed,
             body=body,
+            refusals=refusals,
         )
 
     def _attempts(
@@ -569,6 +631,9 @@ class Fetcher:
             robots.txt.
         :return: The attempt.
         """
+        screened = self._screen(url)
+        if screened is not None:
+            return _Attempt(receipt=self._receipt(url, screened.sent_at, [], url, screened))
         if decisions is not None and not self._allowed(url, decisions):
             return _Attempt(receipt=None, disallowed_url=url)
         fetched_at: datetime | None = None
@@ -593,6 +658,10 @@ class Fetcher:
                     sent_at=exchange.sent_at, status=None, error=ErrorKind.TOO_MANY_REDIRECTS
                 )
                 receipt = self._receipt(url, fetched_at, [*chain, current], None, too_many)
+                return _Attempt(receipt=receipt)
+            screened = self._screen(target)
+            if screened is not None:
+                receipt = self._receipt(url, fetched_at, [*chain, current], target, screened)
                 return _Attempt(receipt=receipt)
             if decisions is not None and not self._allowed(target, decisions):
                 receipt = self._receipt(url, fetched_at, chain, current, exchange)
@@ -632,7 +701,43 @@ class Fetcher:
             user_agent=USER_AGENT,
         )
         self._next_id += 1
+        if exchange.refusal is not None and final_url is not None:
+            self._refusals[receipt.id] = AddressRefusal(
+                receipt_id=receipt.id, url=final_url, reason=exchange.refusal
+            )
         return receipt
+
+    def _screen(self, url: str) -> _Exchange | None:
+        """Resolve a URL's host and screen every address before anything is sent.
+
+        On success the addresses are pinned for the default transport, so the
+        connection goes only to them.
+
+        :param url: The URL about to be requested.
+        :return: ``None`` if every address is public (or allowed loopback); an
+            ``ADDRESS_REFUSED`` exchange naming the first refused address; or a
+            ``CONNECTION`` exchange if the host does not resolve.
+        """
+        parsed = httpx.URL(url)
+        host = parsed.raw_host.decode("ascii")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        try:
+            addresses = tuple(self._resolve(host, port))
+        except OSError:
+            addresses = ()
+        if not addresses:
+            return _Exchange(sent_at=self._now(), status=None, error=ErrorKind.CONNECTION)
+        for address in addresses:
+            reason = refusal_reason(address, allow_loopback=self.config.allow_loopback)
+            if reason is not None:
+                return _Exchange(
+                    sent_at=self._now(),
+                    status=None,
+                    error=ErrorKind.ADDRESS_REFUSED,
+                    refusal=f"{host} resolves to {reason}",
+                )
+        self._network.pins[host] = addresses
+        return None
 
     def _exchange(self, url: str) -> _Exchange:
         """Make one paced request, conditional when the cache allows.
@@ -652,6 +757,8 @@ class Fetcher:
         started = self._clock()
         status: int | None = None
         headers: tuple[tuple[str, str], ...] = ()
+        refusal = None
+        self._network.deadline = started + self.config.total_timeout
         try:
             with self._client.stream("GET", url, headers=conditional) as response:
                 status = response.status_code
@@ -662,9 +769,15 @@ class Fetcher:
             kind = ErrorKind.TIMEOUT
         except _UnreadableBodyError:
             kind = ErrorKind.CONNECTION
+        except AddressRefusedError as exc:
+            kind, refusal = ErrorKind.ADDRESS_REFUSED, str(exc)
         except httpx.RequestError as exc:
             kind = ErrorKind.TLS if _is_tls_failure(exc) else ErrorKind.CONNECTION
-        return _Exchange(sent_at=sent_at, status=status, error=kind, headers=headers)
+        finally:
+            self._network.deadline = None
+        return _Exchange(
+            sent_at=sent_at, status=status, error=kind, headers=headers, refusal=refusal
+        )
 
     def _check_deadline(self, started: float) -> None:
         """Stop a request that has run longer than ``total_timeout``.
