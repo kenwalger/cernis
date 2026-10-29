@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  # publish.yml calls this workflow so a release runs the same checks first.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # The event name keeps a push, a pull request, and a release call on the same
+  # ref from cancelling each other. Runs on main are never cancelled, so every
+  # commit on main gets a complete result.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  # Fail any uv command that would change uv.lock instead of using it.
+  UV_LOCKED: "1"
+
+jobs:
+  checks:
+    name: Checks (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy --strict
+
+      - name: Pydoclint
+        run: uv run pydoclint src tests
+
+      - name: Pytest
+        run: uv run pytest
+
+      - name: Pytest on the declared floor (isolated, Python 3.12)
+        run: uv run --isolated --python 3.12 pytest

@@ -1,0 +1,103 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+# Two releases never publish at the same time, and a started publish is never cancelled.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Full check list
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build distributions
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history, so the release commit can be checked against main.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          # No cache in the release build, so nothing from another run reaches it.
+          enable-cache: false
+
+      - name: Check the release tag matches the package version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="$(uv version --short)"
+          # No leading zeros: PEP 440 would normalize v01.0.0 to 1.0.0 in the file names.
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag '$TAG' is not of the form vX.Y.Z."
+            exit 1
+          fi
+          if [[ "$TAG" != "v$version" ]]; then
+            echo "::error::Release tag '$TAG' does not match package version '$version'."
+            exit 1
+          fi
+          echo "Release tag $TAG matches package version $version."
+
+      - name: Check the release commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Release commit $GITHUB_SHA is not on main."
+            exit 1
+          fi
+          echo "Release commit $GITHUB_SHA is on main."
+
+      - name: Build sdist and wheel
+        run: uv build --no-sources
+
+      - name: Check the distributions
+        run: |
+          version="$(uv version --short)"
+          expected="cernis-$version-py3-none-any.whl cernis-$version.tar.gz"
+          # The C locale fixes the sort order, so the comparison does not depend on the runner.
+          actual="$(cd dist && LC_ALL=C ls | tr '\n' ' ' | sed 's/ $//')"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::dist/ holds unexpected files:"
+            echo "$actual"
+            exit 1
+          fi
+          echo "dist/ holds exactly one wheel and one sdist for $version."
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/cernis/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

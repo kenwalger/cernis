@@ -300,3 +300,4 @@ friction_logs/*
 docs/reference/*
 # Agent Quality Gates local ledgers
 .aqg/
+.idea/
