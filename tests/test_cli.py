@@ -3,16 +3,13 @@
 import json
 import subprocess
 import sys
-import tomllib
-from pathlib import Path
+from importlib.metadata import version
 
 import pytest
 
 from cernis import __version__
 from cernis.checks.registry import CHECKS
 from cernis.cli import REPOSITORY_URL, main
-
-PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 
 def test_version_flag_prints_name_and_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -24,10 +21,9 @@ def test_version_flag_prints_name_and_version(capsys: pytest.CaptureFixture[str]
     assert capsys.readouterr().out.strip() == f"cernis {__version__}"
 
 
-def test_package_version_matches_pyproject() -> None:
-    """The version in ``__init__`` and ``pyproject.toml`` agree."""
-    with PYPROJECT.open("rb") as handle:
-        assert tomllib.load(handle)["project"]["version"] == __version__
+def test_package_version_is_the_installed_distribution_version() -> None:
+    """``__version__`` is the version of the installed ``cernis`` distribution."""
+    assert __version__ == version("cernis")
 
 
 def test_no_arguments_prints_status_paragraph(capsys: pytest.CaptureFixture[str]) -> None:

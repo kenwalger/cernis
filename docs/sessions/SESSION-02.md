@@ -152,3 +152,48 @@ All six commands from `CLAUDE.md` pass: ruff check, ruff format check, mypy stri
 - **Owner decision A16:** accept the publish action's tag-pulled container image as residual risk, or replace it with a digest-pinned image or hash-pinned upload tooling.
 - **Live settings not checked from this session:** the `pypi` environment's reviewers and admin bypass, the `main` and `v*` rulesets, PyPI API tokens, and whether the `cernis` name is free on PyPI.
 - Still open from 2b: pin the uv version and `uv_build` with hashes, and add Dependabot or Renovate for the pinned SHAs (which would also check each SHA against its tag, A5).
+
+## Session 2d: release decisions (2026-10-29)
+
+Docs only. The Owner decided the two open items from Session 2c and corrected one assumption.
+
+### Decisions
+
+1. **A11, the release approver: single-maintainer approval.** Cernis has one maintainer, so **Prevent self-review** stays off. The `pypi` environment approval is a deliberate pause to compare the release commit and file hashes in the run summary, not an independent review. `docs/RELEASING.md` now says so plainly and drops the two-maintainer branches from the environment setup.
+2. **A16, the publish action's container image: accepted risk.** `pypa/gh-action-pypi-publish` pulls its image by registry tag, not digest. Accepted because the image is published by PyPA, the same maintainers as the pinned action, and the action produces PyPI attestations that `uv publish` would not. Revisit before 1.0. Recorded under a new "Accepted risks" section in `docs/RELEASING.md`.
+3. **Correction: `cernis` already exists on PyPI.** 0.0.1 was uploaded by hand, so the setup adds a trusted publisher to an existing project. The pending-publisher path added in 2c is removed from `docs/RELEASING.md`.
+
+Also fixed in `docs/RELEASING.md` step 7: "one pending run per release" was wrong (the limit is one pending publish run at a time), and the step now says to note each file's SHA-256 for step 8.
+
+### Supersedes
+
+- **Deferred (2c).** The Owner decisions on A11 and A16 are made: A11 is decided (single-maintainer approval) and A16 moves from Deferred to Accepted. Also removed from the deferred list is the check of whether the `cernis` name is free on PyPI, since the project exists. The remaining live-settings checks (the `pypi` environment's reviewers and admin bypass, the `main` and `v*` rulesets, and PyPI API tokens) stay deferred.
+- **The gate.** With both Owner decisions made, the audit gate for this change is closed.
+
+### Checks (2d)
+
+All six commands from `CLAUDE.md` pass: ruff check, ruff format check, mypy strict (15 files), pydoclint, pytest (217 passed), and the isolated Python 3.12 pytest (217 passed).
+
+## Session 2e: Windows bash and a single version source (2026-10-29)
+
+### Built
+
+- **A usable bash for the release gate tests (`tests/test_workflows.py`).** From plain PowerShell, `bash` on `PATH` was `C:\Windows\System32\bash.exe`, the WSL launcher, and 18 workflow tests failed. A new finder tries, on Windows, Git for Windows' `bin/bash.exe` and `usr/bin/bash.exe` (under the root given by `git --exec-path`, then `%ProgramFiles%`, `%ProgramFiles(x86)%`, and `%LOCALAPPDATA%\Programs`), then a `bash` on `PATH` that is not in `System32` or `WindowsApps`; elsewhere it uses `shutil.which("bash")`. A session-scoped `bash` fixture runs the finder once and checks the result with `bash -c "echo ok"`. With no usable bash the gate tests skip with the reason, unless `CI` is set (to anything but empty, `0`, or `false`), in which case they fail. The test repository's git commands also run through that bash, so the tests pass even when git is not on the Windows `PATH`. New unit tests cover the WSL exclusion, the candidate order, the `echo ok` check, and skip versus fail by `CI` value.
+- **One version source.** `cernis.__version__` reads `importlib.metadata.version("cernis")`, so `pyproject.toml` is the only place the version is written. `test_package_version_matches_pyproject` is replaced by `test_package_version_is_the_installed_distribution_version`. Checked in a scratch copy: after `uv version X.Y.Z`, the next `uv run` reinstalls the project and `cernis --version` prints the new version; a hand edit of `pyproject.toml` fails under `UV_LOCKED`.
+- **`docs/RELEASING.md`** is split into **One-time setup** (done once, never a release step) and **Each release** (where the version lives, what the workflow checks, steps, after the release, and recovery). Step 1 now confirms both `uv version --short` and `uv run cernis --version`, and step 4 names the three files to commit.
+- **`CLAUDE.md`:** the suite must pass from plain PowerShell as well as from Claude Code's shell.
+
+### Decisions
+
+1. **The gate tests skip locally, but never in CI.** A contributor without Git for Windows can still run the rest of the suite. In CI the same condition fails the run, so the release gate checks cannot disappear unnoticed.
+2. **No audit.** This change is test discovery, version sourcing, and docs, with no Gate A surface. Every behavior is settled by tests run in both shells.
+
+### Checks (2e)
+
+All six commands from `CLAUDE.md` pass from Claude Code's shell and from plain PowerShell with `C:\Windows\System32` first on `PATH` (where `bash` resolves to the WSL launcher): ruff check, ruff format check, mypy strict (15 files), pydoclint, pytest (227 passed), and the isolated Python 3.12 pytest (227 passed). Before the fix, the workflow tests failed 18 times under that PowerShell `PATH`. The workflow and CLI tests also pass with `PATH` reduced to `System32` and uv's folder, with no git on it.
+
+A missing bash could not be simulated end to end on this machine: Windows put the real `%ProgramFiles%` back, and the finder found Git for Windows there. The skip and fail paths are covered by `test_missing_bash_skips_locally_and_fails_in_ci`.
+
+### Not touched
+
+- `CHANGELOG.md` has an uncommitted `## [0.0.2] - 2026-10-29` heading that this session did not write. It is left as found.

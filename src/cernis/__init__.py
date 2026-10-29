@@ -1,3 +1,7 @@
 """Cernis: a content discoverability auditor for published articles."""
 
-__version__ = "0.1.0.dev0"
+from importlib.metadata import version
+
+# pyproject.toml is the only place the version is written; this reads it back
+# from the installed distribution's metadata.
+__version__: str = version("cernis")

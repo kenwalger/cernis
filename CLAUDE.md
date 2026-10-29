@@ -44,6 +44,7 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 - Tests never touch the network.
 - Fixtures are synthetic and hand-written, never captured from real pages (`tests/fixtures/README.md`).
+- The suite must pass from plain PowerShell as well as from Claude Code's shell. On Windows, `bash` on `PATH` may be the System32 WSL launcher; the release gate tests find Git for Windows' bash themselves, skip with a reason when no usable bash exists, and fail instead of skipping in CI.
 - All of these must pass before finishing:
   1. `uv run ruff check .`
   2. `uv run ruff format --check .`
