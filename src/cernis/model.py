@@ -322,27 +322,49 @@ class Finding:
 class Receipt:
     """A record of the raw facts of one fetch, and nothing parsed.
 
-    ``error_kind`` is ``NONE`` when a response arrived; then ``status_code``
-    and ``final_url`` are set. Any other ``error_kind`` means no response:
-    ``status_code``, ``final_url``, and ``body_sha256`` are ``None``.
+    ``error_kind`` says how the attempt ended (ADR-004):
 
-    ``redirect_chain`` lists, in order, every URL that answered with a
-    redirect, starting with ``requested_url``; it is empty when there was no
-    redirect, in which case a response's ``final_url`` equals
-    ``requested_url``. A ``TOO_MANY_REDIRECTS`` receipt keeps the chain it
-    followed.
+    - ``NONE``: a response arrived whole. ``status_code`` and ``final_url``
+      are set.
+    - ``TIMEOUT``, ``CONNECTION``, ``TLS``: the last request failed.
+      ``final_url`` names the URL whose request failed. If the status line
+      and headers arrived before the body failed, ``status_code`` and
+      ``headers`` keep them; otherwise ``status_code`` is ``None`` and there
+      are no headers. ``body_sha256`` is ``None``.
+    - ``TOO_MANY_REDIRECTS``: the redirect limit was reached, so there is no
+      final response. ``status_code``, ``final_url``, and ``body_sha256`` are
+      ``None``, and ``redirect_chain`` holds every URL that redirected.
+
+    ``redirect_chain`` lists, in order, every URL whose redirect was
+    followed, starting with ``requested_url``; it is empty when no redirect
+    was followed, in which case ``final_url`` equals ``requested_url``. A
+    redirect that was not followed (an unusable ``Location``, or a target
+    robots.txt disallows) is the final response: its URL is ``final_url``
+    and its 3xx is ``status_code``.
+
+    ``body_sha256`` is the hash of the whole body or ``None``, never the hash
+    of part of one. A body longer than the fetcher's size limit is not read
+    past the limit, so its hash is ``None`` and ``body_truncated_at`` records
+    the limit (ADR-003). For a ``304 Not Modified``, which has no body,
+    ``body_sha256`` is the hash of the cached body the response validated.
 
     :param id: Identifier, stable within a run.
     :param requested_url: The URL Cernis asked for.
-    :param final_url: The URL that answered, after redirects, or ``None`` if
-        no response.
-    :param redirect_chain: The URLs that redirected, in order.
-    :param status_code: The final HTTP status, or ``None`` if no response.
-    :param error_kind: Why there was no response, or ``NONE``.
+    :param final_url: The URL of the last request, after redirects: the one
+        that answered, or the one whose request failed. ``None`` only for
+        ``TOO_MANY_REDIRECTS``.
+    :param redirect_chain: The URLs whose redirects were followed, in order.
+    :param status_code: The last HTTP status received, or ``None`` if none.
+    :param error_kind: How the attempt failed, or ``NONE``.
     :param fetched_at: When the fetch happened, timezone-aware, in UTC.
-    :param body_sha256: Lowercase hex SHA-256 of the raw response body, if any.
+    :param body_sha256: Lowercase hex SHA-256 of the whole response body, for
+        ``NONE`` only.
+    :param body_truncated_at: The size limit, in bytes, at which Cernis
+        stopped reading a body that was longer; ``None`` if the body was read
+        whole.
     :param headers: ``(name, value)`` pairs for the response headers in
-        :data:`RECORDED_HEADERS`, names in lowercase, each at most once.
+        :data:`RECORDED_HEADERS`, names in lowercase, each at most once; only
+        with a ``status_code``.
         Stored sorted by name, so order does not affect equality.
     :param cernis_version: The Cernis version that made the fetch.
     :param user_agent: The user agent sent with the request.
@@ -357,6 +379,7 @@ class Receipt:
     error_kind: ErrorKind
     fetched_at: datetime
     body_sha256: str | None
+    body_truncated_at: int | None = None
     headers: tuple[tuple[str, str], ...] = ()
     cernis_version: str
     user_agent: str
@@ -376,34 +399,50 @@ class Receipt:
             not isinstance(self.status_code, int) or isinstance(self.status_code, bool)
         ):
             raise ModelError(f"{owner}: status_code must be an int or None")
-        responded = self.error_kind is ErrorKind.NONE
-        if responded and self.status_code is None:
+        succeeded = self.error_kind is ErrorKind.NONE
+        too_many = self.error_kind is ErrorKind.TOO_MANY_REDIRECTS
+        if succeeded and self.status_code is None:
             raise ModelError(f"{owner}: error_kind NONE requires a status_code")
-        if not responded and self.status_code is not None:
+        if too_many and self.status_code is not None:
             raise ModelError(f"{owner}: error_kind {self.error_kind} requires no status_code")
+        if self.status_code is not None and not 100 <= self.status_code <= 599:
+            raise ModelError(f"{owner}: status_code {self.status_code} is not 100 to 599")
 
         if not isinstance(self.redirect_chain, tuple):
             raise ModelError(f"{owner}: redirect_chain must be a tuple of URLs")
         if self.redirect_chain and self.redirect_chain[0] != self.requested_url:
             raise ModelError(f"{owner}: redirect_chain must start with requested_url")
-        if self.error_kind is ErrorKind.TOO_MANY_REDIRECTS and not self.redirect_chain:
+        if too_many and not self.redirect_chain:
             raise ModelError(f"{owner}: TOO_MANY_REDIRECTS needs the redirect_chain it followed")
 
-        if responded:
+        if too_many:
+            if self.final_url is not None:
+                raise ModelError(f"{owner}: final_url must be None for TOO_MANY_REDIRECTS")
+        else:
             _require_text(owner, "final_url", self.final_url)
             if not self.redirect_chain and self.final_url != self.requested_url:
                 raise ModelError(
                     f"{owner}: final_url must equal requested_url when there is no redirect"
                 )
-            if self.status_code is not None and not 100 <= self.status_code <= 599:
-                raise ModelError(f"{owner}: status_code {self.status_code} is not 100 to 599")
+
+        if self.body_sha256 is not None:
+            if not succeeded:
+                raise ModelError(f"{owner}: body_sha256 requires a successful response")
+            _require_sha256(owner, "body_sha256", self.body_sha256)
+        if self.body_truncated_at is not None:
+            if (
+                not isinstance(self.body_truncated_at, int)
+                or isinstance(self.body_truncated_at, bool)
+                or self.body_truncated_at <= 0
+            ):
+                raise ModelError(f"{owner}: body_truncated_at must be a positive int or None")
+            if not succeeded:
+                raise ModelError(f"{owner}: body_truncated_at requires a successful response")
             if self.body_sha256 is not None:
-                _require_sha256(owner, "body_sha256", self.body_sha256)
-        else:
-            if self.final_url is not None:
-                raise ModelError(f"{owner}: final_url must be None when there is no response")
-            if self.body_sha256 is not None:
-                raise ModelError(f"{owner}: body_sha256 requires a response")
+                raise ModelError(
+                    f"{owner}: body_sha256 must be None when the body was cut off "
+                    "at body_truncated_at"
+                )
 
         if not isinstance(self.fetched_at, datetime) or self.fetched_at.utcoffset() != timedelta(0):
             raise ModelError(f"{owner}: fetched_at must be timezone-aware and in UTC")
@@ -421,6 +460,8 @@ class Receipt:
             raise ModelError(
                 f"{owner}: headers outside the recorded subset: {', '.join(unexpected)}"
             )
+        if self.headers and self.status_code is None:
+            raise ModelError(f"{owner}: headers require a status_code")
         repeated = sorted({name for name in names if names.count(name) > 1})
         if repeated:
             raise ModelError(f"{owner}: headers repeated: {', '.join(repeated)}")

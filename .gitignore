@@ -301,3 +301,4 @@ docs/reference/*
 # Agent Quality Gates local ledgers
 .aqg/
 .idea/
+.cernis-cache/

@@ -2,12 +2,15 @@
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
+from pathlib import Path
 
-from cernis import __version__
+from cernis import REPOSITORY_URL, __version__
 from cernis.checks.registry import CHECKS, CheckSpec
-
-REPOSITORY_URL = "https://github.com/kenwalger/cernis"
+from cernis.fetch import FetchConfig, Fetcher, FetchError, FetchResult, RobotsDecision
+from cernis.fetch.cache import DEFAULT_CACHE_DIR
+from cernis.model import Receipt
 
 STATUS_MESSAGE = (
     "Cernis is in early development and nothing is usable yet. It will be a "
@@ -45,6 +48,27 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("table", "json"),
         default="table",
         help="output format (default: table)",
+    )
+    fetch = commands.add_parser(
+        "fetch",
+        help="fetch one URL politely and print its receipts, for manual checking",
+        description=(
+            "Fetch one URL, checking robots.txt first, and print every receipt: "
+            "robots.txt fetches, then one per attempt at the URL."
+        ),
+    )
+    fetch.add_argument("url", help="an absolute http or https URL")
+    fetch.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="output format (default: text)",
+    )
+    fetch.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=DEFAULT_CACHE_DIR,
+        help=f"cache directory for conditional requests (default: {DEFAULT_CACHE_DIR})",
     )
     return parser
 
@@ -89,6 +113,119 @@ def format_checks_json(checks: Sequence[CheckSpec]) -> str:
     return json.dumps(payload, indent=2)
 
 
+def receipt_as_dict(receipt: Receipt) -> dict[str, object]:
+    """Represent a receipt as JSON-ready data.
+
+    :param receipt: The receipt.
+    :return: Its fields, with the time in ISO 8601 and headers as an object.
+    """
+    return {
+        "id": receipt.id,
+        "requested_url": receipt.requested_url,
+        "final_url": receipt.final_url,
+        "redirect_chain": list(receipt.redirect_chain),
+        "status_code": receipt.status_code,
+        "error_kind": receipt.error_kind.value,
+        "fetched_at": receipt.fetched_at.isoformat(),
+        "body_sha256": receipt.body_sha256,
+        "body_truncated_at": receipt.body_truncated_at,
+        "headers": dict(receipt.headers),
+        "cernis_version": receipt.cernis_version,
+        "user_agent": receipt.user_agent,
+    }
+
+
+def _decision_as_dict(decision: RobotsDecision) -> dict[str, object]:
+    """Represent a robots decision as JSON-ready data.
+
+    :param decision: The decision.
+    :return: Its fields.
+    """
+    return {
+        "url": decision.url,
+        "robots_url": decision.robots_url,
+        "allowed": decision.allowed,
+        "basis": decision.basis.value,
+        "receipt_id": decision.receipt_id,
+    }
+
+
+def format_fetch_json(result: FetchResult) -> str:
+    """Render a fetch result as JSON.
+
+    :param result: The result.
+    :return: A JSON object with the robots decisions and every receipt.
+    """
+    payload = {
+        "cernis_version": __version__,
+        "requested_url": result.requested_url,
+        "disallowed_url": result.disallowed_url,
+        "robots": [_decision_as_dict(decision) for decision in result.robots],
+        "robots_receipts": [receipt_as_dict(receipt) for receipt in result.robots_receipts],
+        "receipts": [receipt_as_dict(receipt) for receipt in result.receipts],
+    }
+    return json.dumps(payload, indent=2)
+
+
+def _format_receipt_text(receipt: Receipt, label: str) -> list[str]:
+    """Render one receipt as indented lines.
+
+    :param receipt: The receipt.
+    :param label: What the receipt is for, shown after its id.
+    :return: The lines.
+    """
+    lines = [f"receipt {receipt.id} ({label})"]
+    for name, value in receipt_as_dict(receipt).items():
+        if name == "id":
+            continue
+        if name == "redirect_chain":
+            value = " -> ".join(receipt.redirect_chain) or "(none)"
+        elif name == "headers":
+            value = "; ".join(f"{key}: {text}" for key, text in receipt.headers) or "(none)"
+        lines.append(f"  {name}: {value}")
+    return lines
+
+
+def format_fetch_text(result: FetchResult) -> str:
+    """Render a fetch result as plain text.
+
+    :param result: The result.
+    :return: robots.txt receipts, robots decisions, then the URL's receipts.
+    """
+    lines: list[str] = []
+    for receipt in result.robots_receipts:
+        lines += _format_receipt_text(receipt, "robots.txt")
+    for decision in result.robots:
+        verdict = "allowed" if decision.allowed else "disallowed"
+        lines.append(
+            f"robots: {decision.url} {verdict} ({decision.basis.value}, {decision.receipt_id})"
+        )
+    for number, receipt in enumerate(result.receipts, start=1):
+        lines += _format_receipt_text(receipt, f"attempt {number}")
+    if result.disallowed_url is not None:
+        lines.append(f"not fetched: robots.txt disallows {result.disallowed_url}")
+    return "\n".join(lines)
+
+
+def run_fetch(url: str, cache_dir: Path, output_format: str) -> int:
+    """Fetch one URL and print the result.
+
+    :param url: The URL.
+    :param cache_dir: The cache directory.
+    :param output_format: ``text`` or ``json``.
+    :return: The exit code: 0 when the fetch ran (whatever it found), 2 when
+        the URL cannot be fetched at all.
+    """
+    try:
+        with Fetcher(FetchConfig(cache_dir=cache_dir)) as fetcher:
+            result = fetcher.fetch(url)
+    except FetchError as exc:
+        print(f"cernis fetch: {exc}", file=sys.stderr)
+        return 2
+    print(format_fetch_json(result) if output_format == "json" else format_fetch_text(result))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the ``cernis`` command.
 
@@ -103,5 +240,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             print(format_checks_table(CHECKS))
         return 0
+    if args.command == "fetch":
+        return run_fetch(args.url, args.cache_dir, args.format)
     print(STATUS_MESSAGE)
     return 0

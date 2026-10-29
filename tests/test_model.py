@@ -105,9 +105,9 @@ def receipt(**overrides: object) -> Receipt:
 
 
 def no_response(**overrides: object) -> Receipt:
-    """Build a valid receipt for a fetch that got no response."""
+    """Build a valid receipt for a request that failed before any response arrived."""
     fields: dict[str, Any] = {
-        "final_url": None,
+        "final_url": "https://example.com/post",
         "redirect_chain": (),
         "status_code": None,
         "error_kind": ErrorKind.TIMEOUT,
@@ -459,22 +459,55 @@ def test_valid_receipt_constructs() -> None:
     "kind", sorted(set(ErrorKind) - {ErrorKind.NONE, ErrorKind.TOO_MANY_REDIRECTS})
 )
 def test_receipt_without_response_is_valid(kind: ErrorKind) -> None:
-    """A fetch with no response records why, and no status, final URL, or hash."""
+    """A failed request records why and the URL that failed, with no status or hash."""
     built = no_response(error_kind=kind)
-    assert (built.status_code, built.final_url, built.body_sha256) == (None, None, None)
+    assert (built.status_code, built.body_sha256) == (None, None)
+    assert built.final_url == "https://example.com/post"
+
+
+@pytest.mark.parametrize(
+    "kind", sorted(set(ErrorKind) - {ErrorKind.NONE, ErrorKind.TOO_MANY_REDIRECTS})
+)
+def test_receipt_failed_request_must_name_the_url_that_failed(kind: ErrorKind) -> None:
+    """ADR-004: a timeout, connection, or TLS failure names the URL whose request failed."""
+    with pytest.raises(ModelError, match="final_url"):
+        no_response(error_kind=kind, final_url=None)
+
+
+@pytest.mark.parametrize(
+    "kind", sorted(set(ErrorKind) - {ErrorKind.NONE, ErrorKind.TOO_MANY_REDIRECTS})
+)
+def test_receipt_keeps_a_response_whose_body_failed(kind: ErrorKind) -> None:
+    """ADR-004: a status and headers that arrived before the body failed are kept."""
+    built = no_response(error_kind=kind, status_code=200, headers=(("content-type", "text/html"),))
+    assert (built.status_code, built.header("content-type")) == (200, "text/html")
+
+
+def test_receipt_partial_response_has_no_body_hash() -> None:
+    """A body that failed to arrive whole has no hash."""
+    with pytest.raises(ModelError, match="body_sha256"):
+        no_response(status_code=200, body_sha256="a" * 64)
+
+
+def test_receipt_headers_need_a_status() -> None:
+    """Headers come with a status line; without one there are none to record."""
+    with pytest.raises(ModelError, match="headers"):
+        no_response(headers=(("content-type", "text/html"),))
 
 
 def test_receipt_too_many_redirects_keeps_its_chain() -> None:
     """A redirect loop has no final response but records the chain it followed."""
     chain = ("https://example.com/post", "https://example.com/post/")
-    built = no_response(error_kind=ErrorKind.TOO_MANY_REDIRECTS, redirect_chain=chain)
+    built = no_response(
+        error_kind=ErrorKind.TOO_MANY_REDIRECTS, redirect_chain=chain, final_url=None
+    )
     assert built.redirect_chain == chain
 
 
 def test_receipt_too_many_redirects_without_chain_is_rejected() -> None:
     """Too many redirects means at least one redirect was followed."""
     with pytest.raises(ModelError, match="redirect_chain"):
-        no_response(error_kind=ErrorKind.TOO_MANY_REDIRECTS)
+        no_response(error_kind=ErrorKind.TOO_MANY_REDIRECTS, final_url=None)
 
 
 def test_receipt_error_kind_none_requires_status_code() -> None:
@@ -483,11 +516,10 @@ def test_receipt_error_kind_none_requires_status_code() -> None:
         no_response(error_kind=ErrorKind.NONE)
 
 
-@pytest.mark.parametrize("kind", sorted(set(ErrorKind) - {ErrorKind.NONE}))
-def test_receipt_error_kind_with_status_code_is_rejected(kind: ErrorKind) -> None:
-    """Any error_kind other than NONE means no response, so no status code."""
+def test_receipt_too_many_redirects_with_status_code_is_rejected() -> None:
+    """TOO_MANY_REDIRECTS has no final response, so no status code."""
     with pytest.raises(ModelError, match="error_kind"):
-        receipt(error_kind=kind)
+        receipt(error_kind=ErrorKind.TOO_MANY_REDIRECTS, body_sha256=None, headers=())
 
 
 def test_receipt_error_kind_must_be_an_error_kind_member() -> None:
@@ -502,10 +534,41 @@ def test_receipt_body_hash_without_response_is_rejected() -> None:
         no_response(body_sha256="a" * 64)
 
 
-def test_receipt_final_url_without_response_is_rejected() -> None:
-    """With no response, nothing answered, so there is no final URL."""
+def test_receipt_body_truncated_at_defaults_to_none() -> None:
+    """A receipt records a body cut off at the limit only when it happened."""
+    assert receipt().body_truncated_at is None
+
+
+def test_receipt_oversized_body_records_the_limit_and_no_hash() -> None:
+    """A body cut off at the size limit has no hash, and the receipt names the limit."""
+    built = receipt(body_sha256=None, body_truncated_at=5 * 1024 * 1024)
+    assert (built.body_sha256, built.body_truncated_at) == (None, 5 * 1024 * 1024)
+
+
+def test_receipt_oversized_body_with_a_hash_is_rejected() -> None:
+    """A hash of part of a body would claim to be the hash of the body."""
+    with pytest.raises(ModelError, match="body_sha256"):
+        receipt(body_truncated_at=100)
+
+
+def test_receipt_oversized_body_without_response_is_rejected() -> None:
+    """A body can only be cut off if a response arrived."""
+    with pytest.raises(ModelError, match="body_truncated_at"):
+        no_response(body_truncated_at=100)
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "100"])
+def test_receipt_body_truncated_at_must_be_a_positive_int(value: object) -> None:
+    """The recorded limit is a positive number of bytes."""
+    with pytest.raises(ModelError, match="body_truncated_at"):
+        receipt(body_sha256=None, body_truncated_at=value)
+
+
+def test_receipt_too_many_redirects_with_final_url_is_rejected() -> None:
+    """Too many redirects has no final response, so there is no final URL."""
+    chain = ("https://example.com/post",)
     with pytest.raises(ModelError, match="final_url"):
-        no_response(final_url="https://example.com/post")
+        no_response(error_kind=ErrorKind.TOO_MANY_REDIRECTS, redirect_chain=chain)
 
 
 def test_receipt_response_without_final_url_is_rejected() -> None:

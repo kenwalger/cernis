@@ -17,7 +17,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Phase 1 (scaffold) is built (session 1, 2026-10-28).** The finding and receipt model with its status rules (`src/cernis/model.py`, ADR-001), the no-promise checker (`src/cernis/promises.py`), the check registry with every planned check at version 1 and none implemented (`src/cernis/checks/registry.py`), and `cernis checks`. Session 1b aligned the model with DESIGN.md draft 2: `would_require` for no-attempt questions, `RATE_LIMITED`, receipt `error_kind`, finding `target` and derived `key`, `Snapshot`, and `ChangeClass` (ADR-001 amendment 1).
 
-**Next: Phase 2, the fetcher** (DESIGN.md section 10). Until a session prompt says otherwise, there is no fetching, no parsing, and no network access of any kind.
+**Phase 2 (the fetcher) is built (session 3, 2026-10-29).** `src/cernis/fetch/`: robots.txt for Cernis's own user agent, per-host pacing, manual redirects, 429 and 503 retries, a body limit (ADR-003), a conditional-request cache, and one receipt per attempt (ADR-004); `cernis fetch`. httpx is the only runtime dependency. Three Owner decisions are open in `docs/sessions/SESSION-03.md`.
+
+**Next: Phase 3, the parser, snapshots, and peritext checks** (DESIGN.md section 10). Until a session prompt says otherwise, no HTML parsing, and no real network requests beyond what the prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 
