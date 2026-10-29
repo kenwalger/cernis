@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.1 (2026-10-28). Draft 2.1 adds key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.2 (2026-10-29). Draft 2.2 records the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -120,23 +120,27 @@ The `key` leaves out `check_version` on purpose. When a check's version changes,
 
 ### Receipt fields (sketch)
 
-A receipt records the raw facts of one fetch, and nothing parsed.
+A receipt records the raw facts of one fetch attempt, and nothing parsed. Every attempt gets its own receipt, retries included, so a run of 429 responses and their `Retry-After` values stays on record as evidence.
 
 ```text
 Receipt
   id
   requested_url
-  final_url          after redirects (None if no response)
+  final_url          the last URL reached; on failure, the URL that failed (ADR-004)
   redirect_chain
-  status_code        None if no response
+  status_code        the status received, kept even if the body then failed (ADR-004);
+                     None only if no response arrived
   error_kind         NONE | TIMEOUT | CONNECTION | TLS | TOO_MANY_REDIRECTS
-  fetched_at         UTC
-  body_sha256        of the raw response body (None if no response)
+  fetched_at         UTC, taken when the request is actually sent (after any pacing wait)
+  body_sha256        of the decoded response body (None if no complete body)
+  body_truncated_at  the size limit, if reading stopped there (ADR-003); otherwise None
   headers            a fixed subset (content-type, etag, last-modified, retry-after,
                      x-robots-tag), stored as a sorted tuple of (name, value) pairs
   cernis_version
   user_agent
 ```
+
+Cernis decodes gzip and deflate itself, with the same size limit applied to the decoded body, so a small compressed response cannot expand without bound.
 
 ### Snapshot fields (sketch)
 
@@ -301,7 +305,10 @@ Cernis is a deliberate real-world test of the SDK, its first consumer outside th
 
 - Only URLs the author lists, or that come from the author's own sitemap or DEV username
 - User agent: `Cernis/<version> (+https://github.com/kenwalger/cernis)`
-- Cernis checks robots.txt for its own user agent before fetching, and records a `DISALLOWED_BY_ROBOTS` finding instead of fetching when disallowed
+- Cernis checks robots.txt for its own user agent before fetching, and records a `DISALLOWED_BY_ROBOTS` finding instead of fetching when disallowed. Matching uses Cernis's own RFC 9309 matcher, with its own version, not `urllib.robotparser`, whose behavior differs between Python versions. Rules are matched against the URL exactly as it will be sent, after normalization.
+- A robots.txt that returns 4xx allows everything, per RFC 9309, **except 429**, which Cernis treats like a server error: disallow everything for now, and record it. This deliberately departs from the RFC, in favor of politeness (an ADR records why).
+- Cernis refuses to fetch non-public addresses by default (loopback, private, link-local including cloud metadata addresses, carrier-grade NAT, and the IPv6 equivalents), checked on every hop including redirects. An explicit opt-in allows localhost, for testing.
+- Every request has an overall deadline, not only per-read timeouts, so a server that trickles its headers cannot hold a fetch open indefinitely.
 - At most one request per second per host, with a configurable delay
 - Conditional requests (ETag, Last-Modified) and a local cache in a git-ignored directory
 - No credentials in the MVP. DEV article pages and the public DEV articles listing need no API key.
@@ -402,7 +409,7 @@ Each phase is one or more numbered Claude Code sessions, with the usual CLAUDE.m
 | 0 | Reserve the name: v0.0.1 on PyPI (prompt in section 12). Logo and BRAND.md. | `pip index versions cernis` shows 0.0.1 |
 | 1 | Scaffold: repo, CLAUDE.md, tooling, `model.py` with the finding and receipt types, status rules as validators, the no-promise test, `cernis checks` | Done in Session 1. Session 1b aligns the model with draft 2. |
 | 1.5 | CI on Python 3.12 to 3.14, and Trusted Publishing to PyPI | CI green on a pull request; `docs/RELEASING.md` written |
-| 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Receipts produced against a local test server, including 403, 404, 429, redirects, and timeouts |
+| 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Done in Session 3. Session 3b adds the SSRF guard, the RFC 9309 matcher, and the overall request deadline. |
 | 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | `cernis audit <url>` produces a report from fixtures and from one real article |
 | 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | `cernis pairs --map` runs over all cross-posted articles |
 | 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass |
