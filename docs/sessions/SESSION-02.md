@@ -73,3 +73,82 @@ All six commands from `CLAUDE.md` pass: ruff check, ruff format check, mypy stri
 - **A hosted `deep` audit** of this change once the Decision Engine connects. This closes the gate.
 - **Pin the uv version** in the release build, along with the SHA update automation.
 - **Repository state.** Commit `d81ad98` has the message "Add CI and PyPI Trusted Publishing workflows", but it only deletes `.idea/` files. `.github/`, `docs/RELEASING.md`, and this record are still untracked, so the message for this change covers them.
+
+## Session 2c: Decision Engine audit (2026-10-29)
+
+The Decision Engine connected this session, and the hosted `deep` audit that Session 2b left open ran on the four files as committed in `f2157bc`: `.github/workflows/ci.yml`, `.github/workflows/publish.yml`, `tests/test_workflows.py`, and `docs/RELEASING.md` (test docstrings elided for size).
+
+- **audit_id:** `aud_FA4JzuTPbq` (the run ID; the result carries no separate `audit_id` field)
+- **Mode:** `deep`, stakes `high`, intent `prescriptive`, tier `reasoning`
+- **Submission canonical SHA:** `0e11e04b0017487d8df9f807ffb647cc55dbe71c2ae2c539f54311f5cb5fc430`
+- **Panel:** five auditors from five vendors, here Voice 1 to Voice 5. All five completed, with no partial failures and no fallbacks.
+- **Verdicts:** 5/5 `has-serious-issues`. 30 findings (2, 8, 10, 4, 6 by voice), 5 flagged blocking: V1 f1, V2 f1, V2 f2, V5 f1, V5 f2.
+
+### Adjudication
+
+Each finding was checked against current evidence before it was classified; panel majority decided nothing. Duplicates are merged into 22 rows. The table passes `validate_audit_adjudication.py` (accepted 11, rejected 9, needs-user-decision 2).
+
+Of the five blocking findings, four were disproved by direct evidence (A1, A3, A10): a documented GitHub context value, a uv command run on this machine, and the release step itself run under bash. The fifth (A11) is an Owner decision.
+
+| finding | decision | action | verification |
+|---|---|---|---|
+| A1. V2 f1, V5 f1 (critical, blocking), publish.yml on-main step: on a release event `GITHUB_SHA` is the default-branch tip, so the ancestor check is tautological and the build packages main, not the tag. | rejected | Premise is wrong: GitHub documents `GITHUB_SHA` for `release` as "Last commit in the tagged release" and `GITHUB_REF` as `refs/tags/<tag_name>`, which `actions/checkout` checks out. Hardened anyway: the step now peels `refs/tags/$TAG^{commit}`, requires `HEAD` to equal it, and tests that commit against `origin/main`, so the gate no longer relies on `GITHUB_SHA`. | GitHub docs "Events that trigger workflows", release row (fetched 2026-10-29). New tests run the step in bash on a local repo: tag on main passes; tag off main, checkout other than the tag, and missing tag fail. |
+| A2. V5 f3 (major), RELEASING.md claims checks and build run "against the tagged commit" and reject off-main tags. | accepted | Runbook now states the exact predicate (checked-out commit equals the peeled tag commit, which is on `main`), which the hardened step implements. | `test_release_commit_gate_*` (4 tests) pass; doc text reviewed against publish.yml. |
+| A3. V2 f2 (major, blocking), publish.yml and RELEASING.md: `uv version` does not exist. | rejected | `uv version` is the project-version command in uv 0.7 and later. | `uv version --short` prints `0.1.0.dev0`, exit 0, on uv 0.8.4. |
+| A4. V2 f3 (major), ci.yml: setup-uv has no `python-version` input, so 3.13 and 3.14 never run. | rejected | The input exists at the pinned SHA and sets `UV_PYTHON`. | `astral-sh/setup-uv@68559e9` action.yml: "The version of Python to set UV_PYTHON to." |
+| A5. V2 f5 (minor), V2 f4 part 1, V4 f1 (major): version comments name nonexistent releases, and the pin test checks only the comment format. | rejected | The pins are correct. The pin test cannot resolve SHAs, because CLAUDE.md forbids network access in tests. SHA-to-tag checks stay with the deferred Dependabot or Renovate item. | `git ls-remote` on 2026-10-29: all five SHAs equal their tags (annotated tag dereferenced). |
+| A6. V2 f6 (minor), RELEASING.md step 8: `uvx cernis@X.Y.Z` is invalid syntax. | rejected | `uvx` reads `pkg@X.Y.Z` as `pkg==X.Y.Z`. Corrected the expected output to `cernis X.Y.Z`. | `uvx --offline nosuchpkg-cernis-test@1.2.3` reports "you require nosuchpkg-cernis-test==1.2.3". |
+| A7. V2 f7 (minor), publish.yml build job lacks `UV_LOCKED`. | rejected | `uv build` builds in an isolated environment from `[build-system] requires`, not from `uv.lock`, so `UV_LOCKED` would not constrain it. The real gap is the unhashed backend, already deferred as Session 2b finding 9. | Session 2b finding 9; `pyproject.toml` build-system range `uv_build>=0.8.4,<0.9.0`. |
+| A8. V2 f8 (minor), ci.yml: `cancel-in-progress` is true for tag refs. | accepted | `cancel-in-progress` is now false for `refs/heads/main` and every `refs/tags/` ref. | `test_concurrency_never_cancels_main_a_release_or_a_publish` passes. |
+| A9. V4 f3 (minor), ci.yml: `--isolated` ignores `UV_LOCKED`, so the floor run can re-resolve a stale lock. | rejected | `--isolated` on `uv run` isolates the environment; it does not drop `UV_*` variables. | With a stale lock in a scratch copy, `UV_LOCKED=1 uv run --offline --isolated --python 3.12` exits 2: "lockfile ... needs to be updated, but --locked was provided". |
+| A10. V5 f2 (critical, blocking), publish.yml tag step: `'$TAG'` in `echo` lets a quoted tag break out and run code. | rejected | Bash does not re-parse an expanded variable. The single quotes sit inside a double-quoted string and are literal characters. Regression test added. | `test_release_tag_gate_never_runs_the_tag` (3 hostile tags) runs the real step in bash: exit 1, no file created. |
+| A11. V1 f1 (major, blocking), V3 f3 part, RELEASING.md: the release approver can approve their own release. | needs-user-decision | Runbook now says: enable Prevent self-review once there are two maintainers; turn off admin bypass; with one maintainer the approval is a deliberate pause, not an independent review. Decision actor: the Owner (kenwalger). Question: add a second release reviewer before the first release, or accept single-maintainer approval? Blocked action: relying on the `pypi` environment approval as an independent review. | Owner's choice recorded in a later session record; live `pypi` environment settings inspected by the Owner (not reachable from this session). |
+| A12. V3 f3, V4 f4 (major/minor), RELEASING.md: the gate relies on unstated branch and tag protections, and the approver has nothing concrete to check. | accepted | Added "Repository rules" (main ruleset: no force push or deletion, plus a PR requirement with two or more maintainers; `v*` tag ruleset restricting create, update, and delete). The build writes the commit and SHA-256 of each file to the run summary. Step 7 compares that commit with `git rev-parse "vX.Y.Z^{commit}"`. | `test_release_build_runs_every_gate_in_order` includes the summary step; the step ran locally in bash and wrote the commit and two hashes. Live rulesets are an Owner setup task. |
+| A13. V5 f6 (major), RELEASING.md: revoking legacy PyPI tokens is optional. | accepted | Deleting every token that can upload to `cernis` is now a required setup step. | Doc reviewed. Token state on PyPI is an Owner check. |
+| A14. V3 f1 (major), publish.yml: the built wheel is never installed or run before the irreversible upload. | accepted | New step "Check the wheel installs and runs" runs `uv run --isolated --no-project --with dist/<wheel> cernis --version` and requires `cernis $version`, before upload. | Ran locally against a fresh build: printed `cernis 0.1.0.dev0`. `test_release_wheel_is_run_from_an_isolated_environment` and the step-order test pass. |
+| A15. V1 f2, V2 f4 parts 2-3, V3 f2, V3 f5, V4 f2, V5 f4 (major/minor), tests/test_workflows.py: tests check strings and can pass vacuously. | accepted | Glob covers `*.yaml`. `_run_blocks` reads every block scalar header (with a self-test). `workflow_run` is forbidden. CI run blocks must equal the check list exactly. `persist-credentials` is checked per checkout step. No `if:` or `continue-on-error`. The only `write` in publish.yml is `id-token`. The build steps are in exact order. The tag, commit, and dist gates are executed in bash instead of re-implemented in Python. The YAML-loader suggestion (V4 f2) is not adopted, to avoid a new dependency. | RED: 7 failures before the workflow edits. Mutations to publish.yml are each caught: inverted ancestor check (2 failures), `continue-on-error` (1), version comparison removed (1), dist comparison removed (3). |
+| A16. V3 f4 (major), publish.yml: gh-action-pypi-publish runs a GHCR image pulled by tag, not digest, in the job holding `id-token: write`. | needs-user-decision | Verified that at the pinned SHA the image is `docker://ghcr.io/pypa/gh-action-pypi-publish:<ref>`, where the ref is the pinned SHA. GHCR tags are still mutable. Decision actor: the Owner. Question: accept this residual risk (recorded as deferred), or replace the action with a digest-pinned image or hash-pinned upload tooling? Blocked action: none in this session; recorded under Deferred. | `create-docker-action.py` at `7245906`: `return f'docker://ghcr.io/{repo}:{docker_ref}'`. |
+| A17. V3 f6 (minor), RELEASING.md: "a version can never be uploaded twice" is wrong, and there is no partial-upload path. | accepted | Reworded to "a file name can never be uploaded twice". Added a partial or cancelled publish entry: re-run the failed jobs from the same run, and compare PyPI hashes with the summary. | Doc reviewed. |
+| A18. V3 f7 (minor), RELEASING.md: setup assumes the PyPI project already exists. | accepted | Added the pending-publisher path for the first release, and noted that the name is claimed only on the first successful publish. | Doc reviewed. |
+| A19. V3 f8 (minor), publish.yml concurrency: a newer pending run replaces an older one, and approval waits hold the group. | accepted | Workflow comment reworded; step 7 says to approve or reject each release before publishing the next. | Doc and comment reviewed. |
+| A20. V3 f9 (minor), RELEASING.md: a hand-edited post-release version leaves `uv.lock` stale under `UV_LOCKED`. | accepted | Steps 1 and the post-release step use `uv version`, which updates `pyproject.toml` and `uv.lock` together; commit both. | `uv version` behavior on 0.8.4; doc reviewed. |
+| A21. V3 f10 (nit), ci.yml: the isolated 3.12 run repeats in every matrix leg. | rejected | Session 2 Decision 3 makes each matrix job the literal check list; the extra run is cheap. | SESSION-02.md Decision 3 and Session 2b finding 8 rationale. |
+| A22. V5 f5 (major), RELEASING.md: recovery steps omit publishing a new release, and yank does not stop pinned installs or contain a compromise. | accepted | Off-main recovery restarts from step 5, including a new GitHub release. The bad-release entry says yank does not stop pinned installs; a compromised file needs PyPI deletion, a report to PyPI security, and notice to users. Added a "built wheel does not run" entry. | Doc reviewed. |
+
+### Agreement with the 2b local advisory
+
+- **2b finding 1 (checks before build).** No voice disputed it.
+- **2b finding 2 (commit on `main`).** Voices 2 and 5 said the 2b fix was tautological because `GITHUB_SHA` is the main tip. That is wrong (A1). The engine still found a gap 2b missed: nothing tied the checked-out commit to the tag. The step now peels the tag and requires `HEAD` to be that commit.
+- **2b finding 3 (tag pattern).** No voice disputed the pattern. Voice 3 noted that the tests ran it through Python `re`, not bash. The tag gate now runs in bash, and every 2b case still behaves as before.
+- **2b finding 4 (dist file check).** Agreed and extended. A file-name check does not show that the wheel works (A14), and the old test checked that the step existed, not that it rejected anything (A15).
+- **2b findings 5 and 6 (concurrency).** Extended to release tags (A8) and to GitHub's one-pending-run rule (A19), both missed by 2b.
+- **2b finding 7 (timeouts).** No comment.
+- **2b finding 8 (duplicate CI runs, not applied).** No voice raised it. A21 is a related duplication, rejected on the same reasoning.
+- **2b finding 9 (uv and `uv_build` unpinned).** A7 is the same root, still deferred. The engine found a risk 2b missed: the publish action's container image is pulled by tag (A16).
+- **Pinned SHAs.** 2b found all five correct. Voices 2 and 4 doubted the version labels; a fresh `git ls-remote` confirms 2b (A5).
+- **Missed by 2b entirely.** The runbook's governance gaps (A11, A12, A13, A18), the recovery paths (A17, A22), the post-release lock refresh (A20), and how weak the workflow tests were (A15).
+
+### Changes
+
+- **`publish.yml`.** The commit step is now "Check the release commit is the tag and is on main": it peels `refs/tags/$TAG^{commit}`, requires `HEAD` to equal it, and requires it to be an ancestor of `origin/main`. Two new steps come before upload. "Check the wheel installs and runs" installs the built wheel alone into a fresh environment and requires `cernis --version` to print `cernis $version`. "Record the release commit and file hashes" writes the commit and SHA-256 values to the run summary for the approver. The concurrency comment now states GitHub's pending-run rule.
+- **`ci.yml`.** `cancel-in-progress` is false for `main` and for every tag.
+- **`tests/test_workflows.py`.** The tag, commit, and dist gates are taken from `publish.yml` and run under bash (with `uv` stubbed by a shell function, and a local git repository with annotated tags). Structural checks tightened as listed in A15. Python-regex tag tests replaced by the bash runs. The tests need `bash` and fail, rather than skip, without it. 51 workflow tests, up from 31.
+- **`docs/RELEASING.md`.** Pending publisher for the first release, required token deletion, environment reviewer rules for one and for two or more maintainers, a new "Repository rules" section, the exact build predicate, an approver check against the run summary, `uv version` for both version bumps, and new recovery entries.
+
+### Supersedes
+
+- 2b finding 2's fix: the gate is now tag-based (`HEAD` equals the peeled tag commit, which is on `main`), not `GITHUB_SHA`-based.
+- 2b finding 4's fix: the file-name check stays, and is followed by a wheel run check.
+- Decision 4 holds. The tag is still `vX.Y.Z` with no leading zeros, now proven by running the bash test.
+- **The gate:** the hosted cross-vendor `deep` audit has now run. Under the one-audit-per-change rule, the remediation is not re-audited. Every blocking finding is either disproved by evidence (A1, A3, A10) or left as an Owner decision (A11). The gate is closed except for the two Owner decisions below.
+
+### Checks (2c)
+
+All six commands from `CLAUDE.md` pass: ruff check, ruff format check, mypy strict (15 files), pydoclint, pytest (217 passed), and the isolated Python 3.12 pytest (217 passed). Both workflows parse with PyYAML in a throwaway environment outside the project. Before the workflow edits, the new tests failed 7 times (RED). After them, mutating `publish.yml` was caught each time: inverted ancestor check, `continue-on-error`, version comparison removed, dist comparison removed.
+
+### Deferred (2c)
+
+- **Owner decision A11:** add a second release reviewer and enable Prevent self-review, or accept single-maintainer approval as a pause, not a review.
+- **Owner decision A16:** accept the publish action's tag-pulled container image as residual risk, or replace it with a digest-pinned image or hash-pinned upload tooling.
+- **Live settings not checked from this session:** the `pypi` environment's reviewers and admin bypass, the `main` and `v*` rulesets, PyPI API tokens, and whether the `cernis` name is free on PyPI.
+- Still open from 2b: pin the uv version and `uv_build` with hashes, and add Dependabot or Renovate for the pinned SHAs (which would also check each SHA against its tag, A5).

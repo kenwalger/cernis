@@ -7,6 +7,8 @@ on:
 permissions: {}
 
 # Two releases never publish at the same time, and a started publish is never cancelled.
+# GitHub keeps one pending run per group: a newer release replaces an older one that
+# has not started, and a run waiting for approval holds the group until it is decided.
 concurrency:
   group: publish
   cancel-in-progress: false
@@ -54,13 +56,25 @@ jobs:
           fi
           echo "Release tag $TAG matches package version $version."
 
-      - name: Check the release commit is on main
+      - name: Check the release commit is the tag and is on main
+        env:
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Release commit $GITHUB_SHA is not on main."
+          # Peel the tag, so an annotated tag compares as the commit it names.
+          if ! tag_commit="$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}")"; then
+            echo "::error::Release tag $TAG does not exist in the checkout."
             exit 1
           fi
-          echo "Release commit $GITHUB_SHA is on main."
+          head_commit="$(git rev-parse HEAD)"
+          if [[ "$head_commit" != "$tag_commit" ]]; then
+            echo "::error::Checked out $head_commit, but release tag $TAG is $tag_commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+            echo "::error::Release commit $tag_commit is not on main."
+            exit 1
+          fi
+          echo "Release commit $tag_commit is tag $TAG and is on main."
 
       - name: Build sdist and wheel
         run: uv build --no-sources
@@ -77,6 +91,32 @@ jobs:
             exit 1
           fi
           echo "dist/ holds exactly one wheel and one sdist for $version."
+
+      - name: Check the wheel installs and runs
+        run: |
+          version="$(uv version --short)"
+          # A fresh environment holding only the built wheel, not the source tree.
+          output="$(uv run --isolated --no-project --with "dist/cernis-$version-py3-none-any.whl" cernis --version)"
+          if [[ "$output" != "cernis $version" ]]; then
+            echo "::error::The built wheel printed '$output', expected 'cernis $version'."
+            exit 1
+          fi
+          echo "The built wheel runs and prints $output."
+
+      - name: Record the release commit and file hashes
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          # The approver compares these with the release commit before approving.
+          {
+            echo "### Release $TAG"
+            echo
+            echo "Commit: $(git rev-parse HEAD)"
+            echo
+            echo '```'
+            (cd dist && LC_ALL=C sha256sum -- *)
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

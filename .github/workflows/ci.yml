@@ -11,10 +11,10 @@ permissions:
 
 concurrency:
   # The event name keeps a push, a pull request, and a release call on the same
-  # ref from cancelling each other. Runs on main are never cancelled, so every
-  # commit on main gets a complete result.
+  # ref from cancelling each other. Runs on main and on tags are never cancelled,
+  # so every commit on main and every release gets a complete result.
   group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   # Fail any uv command that would change uv.lock instead of using it.
