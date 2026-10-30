@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/logo__dark.png">
-  <img alt="Afterword" src="img/logo_light.png" width="360">
+  <source media="(prefers-color-scheme: dark)" srcset="img/cernis-mark-dark.svg">
+  <img alt="Cernis" src="img/cernis-mark-light.svg" width="96">
 </picture>
 
 ---
@@ -81,7 +81,7 @@ The low contrast of the middle band against the background is the concept, not a
 
 The mark is artwork, not live text. Use the source files; never redraw the C from a font, since the band positions, outline weight, and terminals are part of the design.
 
-- The C: [confirm the typeface and weight the C was drawn from, and record it here]
+- The C: IBM Plex Sans Bold
 - The wordmark "Cernis": **IBM Plex Sans SemiBold**, in Ink on light backgrounds and Paper on dark. Unlike Afterword's wordmark, it is not split into two styles; the mark carries the concept.
 
 ## Variants

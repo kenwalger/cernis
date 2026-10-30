@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/logo__dark.png">
-  <img alt="Afterword" src="img/logo_light.png" width="360">
+  <source media="(prefers-color-scheme: dark)" srcset="img/cernis-mark-dark.svg">
+  <img alt="Cernis" src="img/cernis-mark-light.svg" width="96">
 </picture>
 
 ---
