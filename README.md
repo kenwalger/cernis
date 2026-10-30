@@ -1,3 +1,10 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="img/logo__dark.png">
+  <img alt="Afterword" src="img/logo_light.png" width="360">
+</picture>
+
+---
+
 # Cernis
 
 **Cernis** is pronounced *KER-nis*, the classical Latin, with a hard C. It comes
