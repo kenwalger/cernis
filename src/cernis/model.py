@@ -84,6 +84,17 @@ class ErrorKind(StrEnum):
     """The host resolved to an address that is not public, so nothing was sent (ADR-005)."""
 
 
+class ExtractorSelection(StrEnum):
+    """How a snapshot's extractor was chosen (DESIGN.md section 3)."""
+
+    DECLARED = "declared"
+    """From the URL's declared site type (``--site-type`` or the pair map)."""
+    HOST = "host"
+    """From a known host, such as ``dev.to``."""
+    GENERIC = "generic"
+    """Neither: the generic extractor, which finds no body."""
+
+
 class ChangeClass(StrEnum):
     """Who caused a page change between two runs (DESIGN.md section 5)."""
 
@@ -512,6 +523,7 @@ class Snapshot:
     :param extractor_id: The site-aware extractor used, such as
         ``dev.article`` or ``wordpress.entry``.
     :param extractor_version: The version of that extractor.
+    :param extractor_selection: How the extractor was chosen.
     :param content_sha256: SHA-256 of the normalized article body text, or
         ``None`` if no body was found.
     :param head_sha256: SHA-256 of the normalized, sorted ``<head>`` metadata
@@ -524,6 +536,7 @@ class Snapshot:
     receipt_id: str
     extractor_id: str
     extractor_version: str
+    extractor_selection: ExtractorSelection
     content_sha256: str | None
     head_sha256: str
     frame_sha256: str
@@ -533,7 +546,128 @@ class Snapshot:
         owner = f"Snapshot for receipt {self.receipt_id!r}"
         for name in ("receipt_id", "extractor_id", "extractor_version"):
             _require_text(owner, name, getattr(self, name))
+        if not isinstance(self.extractor_selection, ExtractorSelection):
+            raise ModelError(f"{owner}: extractor_selection must be an ExtractorSelection")
         if self.content_sha256 is not None:
             _require_sha256(owner, "content_sha256", self.content_sha256)
         _require_sha256(owner, "head_sha256", self.head_sha256)
         _require_sha256(owner, "frame_sha256", self.frame_sha256)
+
+
+class RunError(ModelError):
+    """Raised when a run's parts do not agree. A run that fails is a bug, never emitted."""
+
+
+def _require_utc(owner: str, name: str, value: object) -> None:
+    """Raise unless ``value`` is a timezone-aware datetime in UTC.
+
+    :param owner: Description of the object being validated, for the message.
+    :param name: The field name, for the message.
+    :param value: The value to check.
+    :raises RunError: If it is not a UTC datetime.
+    """
+    if not isinstance(value, datetime) or value.utcoffset() != timedelta(0):
+        raise RunError(f"{owner}: {name} must be timezone-aware and in UTC")
+
+
+@dataclass(frozen=True, kw_only=True)
+class Run:
+    """One audit: the receipts, snapshots, and findings it produced, checked as a whole.
+
+    The rules a single finding cannot check (ADR-001) are checked here, at
+    construction, so a run that breaks one never exists:
+
+    - receipt ids and finding ids are unique, and finding keys are unique;
+    - every finding is about one of the run's subjects;
+    - every piece of evidence names a receipt in the run;
+    - every ``based_on`` id names a finding in the run, and that finding is
+      ``OBSERVED``;
+    - every snapshot is of a receipt in the run, at most one per receipt.
+
+    :param id: The run id, such as ``20261030T120000Z``.
+    :param started_at: When the run started, in UTC.
+    :param finished_at: When it finished, in UTC, not before ``started_at``.
+    :param cernis_version: The Cernis version that ran it.
+    :param subjects: The URLs audited, as the fetcher requested them.
+    :param receipts: Every receipt the run produced, robots.txt included.
+    :param snapshots: A snapshot of each page Cernis read whole.
+    :param findings: Every finding, in report order.
+    :raises RunError: If any run rule is broken.
+    """
+
+    id: str
+    started_at: datetime
+    finished_at: datetime
+    cernis_version: str
+    subjects: tuple[str, ...]
+    receipts: tuple[Receipt, ...]
+    snapshots: tuple[Snapshot, ...]
+    findings: tuple[Finding, ...]
+
+    def __post_init__(self) -> None:
+        """Check the run as a whole.
+
+        :raises RunError: If any run rule is broken.
+        """
+        owner = f"Run {self.id!r}"
+        for name in ("id", "cernis_version"):
+            if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
+                raise RunError(f"{owner}: {name} must be a non-blank string")
+        _require_utc(owner, "started_at", self.started_at)
+        _require_utc(owner, "finished_at", self.finished_at)
+        if self.finished_at < self.started_at:
+            raise RunError(f"{owner}: finished_at is before started_at")
+        if not self.subjects or not all(
+            isinstance(subject, str) and subject.strip() for subject in self.subjects
+        ):
+            raise RunError(f"{owner}: subjects must be a non-empty tuple of URLs")
+
+        receipt_ids = [receipt.id for receipt in self.receipts]
+        repeated = sorted({rid for rid in receipt_ids if receipt_ids.count(rid) > 1})
+        if repeated:
+            raise RunError(f"{owner}: receipt id repeated: {', '.join(repeated)}")
+        known = set(receipt_ids)
+
+        snapshot_ids = [snap.receipt_id for snap in self.snapshots]
+        for receipt_id in snapshot_ids:
+            if receipt_id not in known:
+                raise RunError(f"{owner}: snapshot of receipt {receipt_id!r}, not in the run")
+        if len(snapshot_ids) != len(set(snapshot_ids)):
+            raise RunError(f"{owner}: more than one snapshot of one receipt")
+
+        by_id: dict[str, Finding] = {}
+        keys: dict[str, str] = {}
+        subjects = set(self.subjects)
+        for finding in self.findings:
+            if finding.id in by_id:
+                raise RunError(f"{owner}: finding id {finding.id!r} repeated")
+            by_id[finding.id] = finding
+            if finding.key in keys:
+                raise RunError(
+                    f"{owner}: findings {keys[finding.key]!r} and {finding.id!r} share a key "
+                    f"({finding.check_id}, {finding.subject_url}, {finding.target!r})"
+                )
+            keys[finding.key] = finding.id
+            if finding.subject_url not in subjects:
+                raise RunError(
+                    f"{owner}: finding {finding.id!r} is about {finding.subject_url!r}, "
+                    "not a subject of the run"
+                )
+            for item in finding.evidence:
+                if item.receipt_id not in known:
+                    raise RunError(
+                        f"{owner}: finding {finding.id!r} cites receipt {item.receipt_id!r}, "
+                        "not in the run"
+                    )
+        for finding in self.findings:
+            for ref in finding.based_on:
+                target = by_id.get(ref)
+                if target is None:
+                    raise RunError(
+                        f"{owner}: finding {finding.id!r} has based_on {ref!r}, not in the run"
+                    )
+                if target.status is not Status.OBSERVED:
+                    raise RunError(
+                        f"{owner}: finding {finding.id!r} has based_on {ref!r}, which is "
+                        f"{target.status}, not OBSERVED"
+                    )

@@ -171,7 +171,13 @@ class JsonLdBlock:
     :param raw: The script's text, exactly as written.
     :param parsed: Whether ``raw`` parsed as JSON.
     :param value: The parsed value, or ``None`` if it did not parse.
-    :param error: Why it did not parse, or ``None``.
+    :param error: Why it did not parse, in Cernis's own fixed words (``not
+        valid JSON``, ``the block is empty``, or ``nested too deeply to
+        read``), or ``None``. Findings use this, so they are the same on
+        every Python version.
+    :param detail: The JSON decoder's own message and position, or
+        ``None``. Its wording and even its column differ between Python
+        versions, so it is for reading the page, never for a finding.
     :param types: Every ``@type`` found at the top level, in a top-level
         array, or in an ``@graph``, in order, without repeats.
     """
@@ -182,6 +188,7 @@ class JsonLdBlock:
     value: object
     error: str | None
     types: tuple[str, ...]
+    detail: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -275,17 +282,21 @@ def _json_ld(index: int, raw: str) -> JsonLdBlock:
         return JsonLdBlock(
             index=index, raw=raw, parsed=False, value=None, error="the block is empty", types=()
         )
+    detail = None
     try:
         value = json.loads(raw)
     except json.JSONDecodeError as exc:
-        error = f"not valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}"
+        error = "not valid JSON"
+        detail = f"{exc.msg} at line {exc.lineno}, column {exc.colno}"
     except RecursionError:
-        error = "not valid JSON: nested too deeply to read"
+        error = "nested too deeply to read"
     else:
         return JsonLdBlock(
             index=index, raw=raw, parsed=True, value=value, error=None, types=_types(value)
         )
-    return JsonLdBlock(index=index, raw=raw, parsed=False, value=None, error=error, types=())
+    return JsonLdBlock(
+        index=index, raw=raw, parsed=False, value=None, error=error, types=(), detail=detail
+    )
 
 
 def is_in_head(node: LexborNode) -> bool:
@@ -356,7 +367,10 @@ def parse_page(receipt: Receipt, body: bytes) -> ParsedPage:
     blocks = [node for node in tree.css("script") if is_json_ld(node)]
     json_ld = tuple(_json_ld(index, node.text(deep=True)) for index, node in enumerate(blocks))
     problems.extend(
-        f"JSON-LD block {block.index}: {block.error}" for block in json_ld if block.error
+        f"JSON-LD block {block.index}: {block.error}"
+        + (f" ({block.detail})" if block.detail else "")
+        for block in json_ld
+        if block.error
     )
     # Only <head> titles: an SVG in the body may carry its own <title>.
     head_titles = tree.head.css("title") if tree.head is not None else []

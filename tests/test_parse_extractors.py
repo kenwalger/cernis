@@ -4,6 +4,7 @@ import pytest
 from parse_support import DEV_URL, WORDPRESS_URL, fixture
 from selectolax.lexbor import LexborHTMLParser
 
+from cernis.model import ExtractorSelection
 from cernis.parse import (
     DEV_ARTICLE,
     EXTRACTORS,
@@ -12,6 +13,7 @@ from cernis.parse import (
     SiteType,
     choose_extractor,
     read_article,
+    select_extractor,
 )
 
 
@@ -123,3 +125,19 @@ def test_the_generic_extractor_finds_no_body_by_design() -> None:
         None,
         None,
     )
+
+
+@pytest.mark.parametrize(
+    ("url", "site", "selection"),
+    [
+        (DEV_URL, None, ExtractorSelection.HOST),
+        (DEV_URL, SiteType.DEV, ExtractorSelection.DECLARED),
+        (WORDPRESS_URL, SiteType.WORDPRESS, ExtractorSelection.DECLARED),
+        (WORDPRESS_URL, None, ExtractorSelection.GENERIC),
+    ],
+)
+def test_selection_says_how_the_extractor_was_chosen(
+    url: str, site: SiteType | None, selection: ExtractorSelection
+) -> None:
+    """Declared, host, or generic (DESIGN.md section 3)."""
+    assert select_extractor(url, site)[1] is selection

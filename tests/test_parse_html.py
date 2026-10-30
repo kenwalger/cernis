@@ -113,12 +113,13 @@ def test_broken_json_ld_is_recorded_with_its_raw_text_and_the_error() -> None:
         (2, True, ("Article", "NewsArticle", "Person")),
         (3, False, ()),
     ]
-    assert parsed.json_ld[1].error is not None
-    assert parsed.json_ld[1].error.startswith("not valid JSON")
+    assert parsed.json_ld[1].error == "not valid JSON"
+    assert parsed.json_ld[1].detail is not None
+    assert "line 1" in parsed.json_ld[1].detail
     assert parsed.json_ld[1].raw.endswith('"Missing brace"')
     assert parsed.json_ld[3].error == "the block is empty"
     assert [p for p in parsed.problems if p.startswith("JSON-LD")] == [
-        f"JSON-LD block 1: {parsed.json_ld[1].error}",
+        f"JSON-LD block 1: not valid JSON ({parsed.json_ld[1].detail})",
         "JSON-LD block 3: the block is empty",
     ]
 
@@ -241,3 +242,17 @@ def test_an_unknown_charset_falls_back_and_is_recorded() -> None:
 def test_normalize_text() -> None:
     """NFC, and every run of whitespace (including non-breaking space) is one space."""
     assert normalize_text("  cafe\u0301 \u00a0\n\t  bar  ") == "caf\u00e9 bar"
+
+
+def test_json_ld_errors_are_worded_the_same_on_every_python() -> None:
+    """The decoder's message differs between Python 3.12 and 3.13; Cernis's wording does not.
+
+    The trailing comma below is reported as "Expecting property name" at one
+    column on 3.12 and "Illegal trailing comma" at another on 3.13 and later.
+    """
+    body = b'<script type="application/ld+json">{"a": 1, }</script>'
+
+    (block,) = parse_page(receipt_for(body), body).json_ld
+
+    assert (block.parsed, block.error) == (False, "not valid JSON")
+    assert block.detail is not None

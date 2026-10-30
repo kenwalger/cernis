@@ -1,0 +1,1100 @@
+{
+  "format": "cernis-report",
+  "format_version": 1,
+  "run": {
+    "id": "20261030T120000Z",
+    "started_at": "2026-10-30T12:00:00+00:00",
+    "finished_at": "2026-10-30T12:00:01+00:00",
+    "cernis_version": "0.1.0.dev0"
+  },
+  "checks": [
+    {
+      "id": "peri.canonical.present",
+      "version": "1"
+    },
+    {
+      "id": "peri.canonical.single",
+      "version": "1"
+    },
+    {
+      "id": "peri.canonical.absolute",
+      "version": "1"
+    },
+    {
+      "id": "peri.meta.description",
+      "version": "1"
+    },
+    {
+      "id": "peri.og.core",
+      "version": "1"
+    },
+    {
+      "id": "peri.og.url_matches_canonical",
+      "version": "1"
+    },
+    {
+      "id": "peri.lang",
+      "version": "1"
+    },
+    {
+      "id": "peri.jsonld.parses",
+      "version": "1"
+    },
+    {
+      "id": "peri.title",
+      "version": "1"
+    }
+  ],
+  "subjects": [
+    "https://dev.to/example-author/a-synthetic-post-1a2b",
+    "https://blog.example.com/two-canonicals/",
+    "https://blog.example.com/gone/"
+  ],
+  "counts": {
+    "observed": 24,
+    "recommendations": 1,
+    "not_determinable": 12
+  },
+  "findings": [
+    {
+      "id": "f-001",
+      "key": "29cb774dfba59722b39fbb5bdb0d0d82ef3e675d357367bb90058ccb5eccb7a8",
+      "check_id": "peri.canonical.present",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "The page declares a canonical link.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://blog.example.com/2026/10/a-synthetic-post/",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-002",
+      "key": "4e09fd8a2019c105ff3806ee105d8346ad4ce3c6557009c424bcf1ccea264bef",
+      "check_id": "peri.canonical.single",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "The page declares one canonical URL: https://blog.example.com/2026/10/a-synthetic-post/.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://blog.example.com/2026/10/a-synthetic-post/",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-003",
+      "key": "5783cb140987fcf2c98adc1875eddd78cc29d66a0af8487b5ae18e479755f65a",
+      "check_id": "peri.canonical.absolute",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "The canonical URL is absolute.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://blog.example.com/2026/10/a-synthetic-post/",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-004",
+      "key": "0002bec2e8002f2904d5680756692f5133fb7034e120c032dc53b0b6e270c950",
+      "check_id": "peri.meta.description",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "The page has a meta description of 68 characters.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > meta[name=\"description\"] content",
+          "observed": "A hand-written page that imitates a DEV article, for Cernis's tests.",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-005",
+      "key": "f64c7b5771902720d9d8d00c1bb9ae8454156681284c1ad6e47abd249aba6e1a",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "og:title",
+      "summary": "og:title is present.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > meta[property=\"og:title\"] content",
+          "observed": "A Synthetic Post About Fixtures",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-006",
+      "key": "86c58835b691dd1dae42f5f56829c194e75fe6f00ba032fa896dd7a3d5b891d8",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "og:description",
+      "summary": "og:description is present.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > meta[property=\"og:description\"] content",
+          "observed": "A hand-written page that imitates a DEV article.",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-007",
+      "key": "2b584fe2822dcebcb048e88be943a152a5a69e9ea80784682a7e9d5045488192",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "og:image",
+      "summary": "og:image is present.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > meta[property=\"og:image\"] content",
+          "observed": "https://media.dev.example/cover/synthetic-cover.png",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-008",
+      "key": "088e55796238fddf5aedb2028156a798251f9f7df52efc25deae0b44bbf6c52c",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "og:url",
+      "summary": "og:url is present.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > meta[property=\"og:url\"] content",
+          "observed": "https://dev.to/example-author/a-synthetic-post-1a2b",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-009",
+      "key": "a4a8799304807b1ea75dd32599fde923095526c83ff89907a446d890ab3d0a0a",
+      "check_id": "peri.og.url_matches_canonical",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": true,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "og:url (https://dev.to/example-author/a-synthetic-post-1a2b) and the canonical URL (https://blog.example.com/2026/10/a-synthetic-post/) are different.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > meta[property=\"og:url\"] content",
+          "observed": "https://dev.to/example-author/a-synthetic-post-1a2b",
+          "searched_for": null
+        },
+        {
+          "receipt_id": "r-002",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://blog.example.com/2026/10/a-synthetic-post/",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-010",
+      "key": "0fc99cdf79f34a8933b04ff784b40e47ce81d10f468d364fef8df8e5cf4c27b0",
+      "check_id": "peri.lang",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "The page declares its language as 'en'.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "html lang",
+          "observed": "en",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-011",
+      "key": "d61b22818676dd72e7e68a4c9b2e4b3946240753b8b4052e61c6a960add12ce5",
+      "check_id": "peri.jsonld.parses",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "block 1",
+      "summary": "JSON-LD block 1 parses; its @type is Article.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "script[type=\"application/ld+json\"] #1",
+          "observed": "\n  {\n    \"@context\": \"http://schema.org\",\n    \"@type\": \"Article\",\n    \"headline\": \"A Synthetic Post About Fixtures\",\n    \"author\": {\"@type\": \"Person\", \"name\": \"Example Author\"},\n    \"datePublished\": \"2026-10-20T12:00:00Z\"\n  }\n  ",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-012",
+      "key": "2b2d4b1ab098af614ddc07cb136e2dc7ce5a3b053e7b2f102f46c0767e38c131",
+      "check_id": "peri.title",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "The page's title is 47 characters long.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > title",
+          "observed": "A Synthetic Post About Fixtures - DEV Community",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-013",
+      "key": "abc9bb7889deaae265ddd05c265f90ed784d784d8fc69882361bf490664206d5",
+      "check_id": "peri.canonical.present",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The page declares 2 canonical links.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://blog.example.com/two-canonicals/",
+          "searched_for": null
+        },
+        {
+          "receipt_id": "r-004",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://dev.to/example-author/two-canonicals-5e6f",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-014",
+      "key": "d3ac45f66392093694d31cee0edf923f3dfd7f74f07626191b887e6f0455b405",
+      "check_id": "peri.canonical.single",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": true,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The page declares 2 canonical links that name different URLs.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://blog.example.com/two-canonicals/",
+          "searched_for": null
+        },
+        {
+          "receipt_id": "r-004",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://dev.to/example-author/two-canonicals-5e6f",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-015",
+      "key": "e44151b9dba8415e42a70e8a19092ec82af71fd71b7f3a76910ff7aea41a8a9b",
+      "check_id": "peri.canonical.absolute",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "All 2 canonical URLs are absolute.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://blog.example.com/two-canonicals/",
+          "searched_for": null
+        },
+        {
+          "receipt_id": "r-004",
+          "location": "head > link[rel=\"canonical\"] href",
+          "observed": "https://dev.to/example-author/two-canonicals-5e6f",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-016",
+      "key": "cfe522049720b4ce8655bf18974355ff6723b83dfe6a0bcb93d2110f71efe26d",
+      "check_id": "peri.meta.description",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The page has a meta description of 34 characters.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "head > meta[name=\"description\"] content",
+          "observed": "Two canonical links that disagree.",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-017",
+      "key": "ee02a72d0f497794d3d5f44718a2e5d278e181a97a86621e30782b671ee68dd6",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "og:title",
+      "summary": "og:title is absent.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta property=\"og:title\">"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-018",
+      "key": "731c18be2f578a4fc8d0ef8bba71c42cb0db8f1490f1ba24043d99d65b4c35da",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "og:description",
+      "summary": "og:description is absent.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta property=\"og:description\">"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-019",
+      "key": "b49377f8e95321d2d18cffac2cf7a7c344fb2928faeb90273b60375d899e0e11",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "og:image",
+      "summary": "og:image is absent.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta property=\"og:image\">"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-020",
+      "key": "4fc22dff506a32e2d4b120f0dab78e1f5c5fbf24ee079c8a1d7e62fa97e07035",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "og:url",
+      "summary": "og:url is absent.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta property=\"og:url\">"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-021",
+      "key": "5faae59e276a03b3a5230e3bd0418e8db213acddce2748f729e128f0cbd87342",
+      "check_id": "peri.og.url_matches_canonical",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "There is no og:url to compare with the canonical URL.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta property=\"og:url\">"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-022",
+      "key": "5eae259e4b5834c27de85eb28cac0acdf558bd2bca0b08015119415559ef316c",
+      "check_id": "peri.lang",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The page declares its language as 'en'.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "html lang",
+          "observed": "en",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-023",
+      "key": "99dde689f9edd9f622ffec6d2d608600e61d1c0270228913335fa345d88c10b2",
+      "check_id": "peri.jsonld.parses",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The page has no JSON-LD blocks.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "<script type=\"application/ld+json\">"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-024",
+      "key": "0f8751d2c89ca21a32f0279930a588627388c462229d6df5ed8235ee9f6e53f6",
+      "check_id": "peri.title",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The page's title is 26 characters long.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "head > title",
+          "observed": "A Post With Two Canonicals",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-025",
+      "key": "7a9594f2b967fb9fe0b4a61c3ab5fbc396294728d41e12b65b0dfa0bad9d8fe8",
+      "check_id": "peri.canonical.single",
+      "check_version": "1",
+      "status": "RECOMMENDATION",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "peri.canonical.single.keep-one",
+      "summary": "Remove the extra canonical links so that the page declares one canonical URL, the page's preferred URL.",
+      "evidence": [],
+      "rationale": "The page declares 2 canonical links that name different URLs (https://blog.example.com/two-canonicals/, https://dev.to/example-author/two-canonicals-5e6f). RFC 6596 defines the canonical link relation as naming one preferred URL for a page; links that disagree leave that URL undeclared.",
+      "based_on": [
+        "f-014"
+      ],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-026",
+      "key": "011b16bfc2b8c890f3e2930d69ed0e9caba20222e3a9110ef81600479d4bb1b9",
+      "check_id": "peri.canonical.present",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether the page declares a canonical link is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page declares a canonical link",
+      "would_require": null
+    },
+    {
+      "id": "f-027",
+      "key": "d112f1d0290802ba60f7d05296f6ac094003f1905e1264fd9b4c06b0eb1b8bb0",
+      "check_id": "peri.canonical.single",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "How many canonical URLs the page declares, and whether they agree is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "How many canonical URLs the page declares, and whether they agree",
+      "would_require": null
+    },
+    {
+      "id": "f-028",
+      "key": "05e26d50ec15de6c0340a353c44ed763a4d5f23973873b20b6f1fbb396f1cbbb",
+      "check_id": "peri.canonical.absolute",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether the page's canonical URL is absolute is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page's canonical URL is absolute",
+      "would_require": null
+    },
+    {
+      "id": "f-029",
+      "key": "a0621e3aa331e0183a2dae421de3d0d3cfc85becaeef78689cbfb181dba75baf",
+      "check_id": "peri.meta.description",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether the page has a meta description, and how long it is is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page has a meta description, and how long it is",
+      "would_require": null
+    },
+    {
+      "id": "f-030",
+      "key": "c4c2c384068172b886c515f2ec527bb8a224bedfa8f485aa2209f3c337b1f0d8",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "og:title",
+      "summary": "Whether the page declares og:title is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page declares og:title",
+      "would_require": null
+    },
+    {
+      "id": "f-031",
+      "key": "8bac78ca163b57bee1ffa0b8af82c00c39947e233ee75115438555eefe17e521",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "og:description",
+      "summary": "Whether the page declares og:description is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page declares og:description",
+      "would_require": null
+    },
+    {
+      "id": "f-032",
+      "key": "b4b64366c4119d1212ff54d8f4c76fe2f7ee600862e166c32f5f071548944958",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "og:image",
+      "summary": "Whether the page declares og:image is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page declares og:image",
+      "would_require": null
+    },
+    {
+      "id": "f-033",
+      "key": "03336828f20792a62de1494a8c545c8d437f7905d552ced728b29a0fefda7057",
+      "check_id": "peri.og.core",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "og:url",
+      "summary": "Whether the page declares og:url is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page declares og:url",
+      "would_require": null
+    },
+    {
+      "id": "f-034",
+      "key": "7815a55aec84eca6a83fa0e4ae4878e46fdf569309bfadd86275719a72bb6624",
+      "check_id": "peri.og.url_matches_canonical",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether og:url agrees with the canonical URL is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether og:url agrees with the canonical URL",
+      "would_require": null
+    },
+    {
+      "id": "f-035",
+      "key": "eb70fbdbe10f5d890c2eb6d1744dd3c4b1b35b558b8092cc974f70440e889d17",
+      "check_id": "peri.lang",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether the page declares its language is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page declares its language",
+      "would_require": null
+    },
+    {
+      "id": "f-036",
+      "key": "3e969419f821f9af6efd91451c7166ca3861901965a105d154c6c142e7ed3626",
+      "check_id": "peri.jsonld.parses",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether the page's JSON-LD blocks parse is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page's JSON-LD blocks parse",
+      "would_require": null
+    },
+    {
+      "id": "f-037",
+      "key": "d07d55799d381d61f1f190397294e1f4d9d385721fdb8c9ecdf40203ac3ca4b7",
+      "check_id": "peri.title",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "What the page's title is, and how long it is is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "What the page's title is, and how long it is",
+      "would_require": null
+    }
+  ],
+  "receipts": [
+    {
+      "id": "r-001",
+      "requested_url": "https://dev.to/robots.txt",
+      "final_url": "https://dev.to/robots.txt",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-002",
+      "requested_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "final_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "redirect_chain": [],
+      "status_code": 200,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "75b8e7c9cdf7cd7b1c5532e4a1cec0a2148493bb404557a9d3e10a7a28a9cd3a",
+      "body_truncated_at": null,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-003",
+      "requested_url": "https://blog.example.com/robots.txt",
+      "final_url": "https://blog.example.com/robots.txt",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-004",
+      "requested_url": "https://blog.example.com/two-canonicals/",
+      "final_url": "https://blog.example.com/two-canonicals/",
+      "redirect_chain": [],
+      "status_code": 200,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "ae39e3ccf2736f4325b395d6c334644c79f630a604fe2f66fa28a34ba633ff55",
+      "body_truncated_at": null,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-005",
+      "requested_url": "https://blog.example.com/gone/",
+      "final_url": "https://blog.example.com/gone/",
+      "redirect_chain": [],
+      "status_code": null,
+      "error_kind": "TIMEOUT",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": null,
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    }
+  ],
+  "snapshots": [
+    {
+      "receipt_id": "r-002",
+      "extractor_id": "dev.article",
+      "extractor_version": "1+n1",
+      "extractor_selection": "host",
+      "content_sha256": "aee4cd69e2100ae79104d70f6d9a27d936266149ba2accabd8c5d20fd69a659e",
+      "head_sha256": "66984af10743c8f50832ed06cc679014f30f3da0c4f64cf2a38e471b7b95c002",
+      "frame_sha256": "a7d26c8ffb8b6904420e6b485b4bb71ed059263b73fddfcd55c418417a3fa2d4"
+    },
+    {
+      "receipt_id": "r-004",
+      "extractor_id": "wordpress.entry",
+      "extractor_version": "1+n1",
+      "extractor_selection": "declared",
+      "content_sha256": "c1e5cbd5e76a1f306c89ff7758ded12f7d96e673f5125bf85153984cb2238059",
+      "head_sha256": "79a2df5f6d604446deddefb2c26ac3fb9698ee9b0ec89a56cbf2370614dd9571",
+      "frame_sha256": "7d975498ab01c7604eab0212246140a4ecd97f8f5b8e9de983082c4e276d2da4"
+    }
+  ]
+}

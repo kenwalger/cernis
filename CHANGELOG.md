@@ -60,6 +60,18 @@ uses [Semantic Versioning](https://semver.org/).
 - Finding keys are final: NFC on every string, and URL targets normalized.
 - `ReasonCode.ADDRESS_REFUSED`.
 - selectolax and idna are declared dependencies.
+- The nine peritext checks (`cernis.checks.peritext`), exactly per DESIGN.md
+  section 4, with recommendations for author-actionable defects from six new
+  templates.
+- Fetch outcomes as `NOT_DETERMINABLE` findings (`cernis.checks.outcomes`):
+  robots.txt, refused addresses, rate limiting, access denied, failed and
+  truncated fetches; no check runs against a page not seen whole.
+- `Run`, validated as a whole at construction, and `cernis.audit.audit`.
+- Reports: JSON (`cernis-report`, format version 1) and Markdown.
+- `cernis audit <url> ... [--site-type dev|wordpress] [--format md|json]
+  [--output FILE]`.
+- The pair map format (`docs/PAIR-MAP.md`) and its loader (`cernis.pairs`).
+- `Snapshot.extractor_selection`: declared, host, or generic.
 
 ## [0.0.1] - 2026-10-28
 

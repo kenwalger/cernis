@@ -64,7 +64,7 @@ import re
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from cernis.model import ErrorKind, Receipt, Snapshot
-from cernis.parse.extractors import SiteType, choose_extractor, find_body
+from cernis.parse.extractors import SiteType, find_body, select_extractor
 from cernis.parse.html import (
     NON_TEXT_ELEMENTS,
     is_json_ld,
@@ -257,13 +257,14 @@ def build_snapshot(receipt: Receipt, body: bytes, *, site: SiteType | None = Non
     if hashlib.sha256(body).hexdigest() != receipt.body_sha256:
         raise SnapshotError(f"the body given is not the body of receipt {receipt.id}")
     tree, _ = parse_tree(body, receipt.header("content-type"))
-    extractor = choose_extractor(receipt.final_url or receipt.requested_url, site)
+    extractor, selection = select_extractor(receipt.final_url or receipt.requested_url, site)
     match = find_body(tree, extractor)
     content = None if match.node is None else _sha256(visible_text(match.node))
     return Snapshot(
         receipt_id=receipt.id,
         extractor_id=extractor.id,
         extractor_version=f"{extractor.version}+n{NORMALIZATION_VERSION}",
+        extractor_selection=selection,
         content_sha256=content,
         head_sha256=_sha256(_head_entries(tree)),
         frame_sha256=_sha256(_frame_tokens(tree, match.node)),

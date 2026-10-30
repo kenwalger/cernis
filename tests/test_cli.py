@@ -63,7 +63,10 @@ def test_checks_prints_table(capsys: pytest.CaptureFixture[str]) -> None:
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].split() == ["ID", "FAMILY", "VERSION", "IMPLEMENTED"]
     rows = [line.split() for line in lines[1:]]
-    assert rows == [[check.id, check.family.value, check.version, "no"] for check in CHECKS]
+    assert rows == [
+        [check.id, check.family.value, check.version, "yes" if check.implemented else "no"]
+        for check in CHECKS
+    ]
 
 
 def test_checks_prints_json(capsys: pytest.CaptureFixture[str]) -> None:
@@ -267,3 +270,122 @@ def test_fetch_text_names_the_deciding_rule(
     main(["fetch", "https://example.com/post", "--cache-dir", str(tmp_path)])
 
     assert "disallowed (RULES, r-001) by 'Disallow: /post'" in capsys.readouterr().out
+
+
+# cernis audit
+
+
+WP_PAGE = "https://blog.example.com/two-canonicals/"
+
+
+def _audit_site(monkeypatch: pytest.MonkeyPatch) -> list[FetchConfig]:
+    """Serve one synthetic WordPress page to ``cernis audit``.
+
+    :param monkeypatch: Used to replace the CLI's fetcher.
+    :return: The configurations the CLI built.
+    """
+    site = Site()
+    site.add(
+        WP_PAGE,
+        respond(
+            200,
+            (Path(__file__).parent / "fixtures" / "two-canonicals.html").read_bytes(),
+            {"content-type": "text/html"},
+        ),
+    )
+    return _scripted_fetcher(monkeypatch, site)
+
+
+def test_audit_prints_a_markdown_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The default format is Markdown, on standard output."""
+    _audit_site(monkeypatch)
+
+    code = main(["audit", WP_PAGE, "--site-type", "wordpress", "--cache-dir", str(tmp_path)])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert out.startswith("# Cernis audit: A Post With Two Canonicals\n")
+    assert "## Observed (12)" in out
+    assert "## Recommendations (1)" in out
+    assert "extractor wordpress.entry 1+n1, declared" in out
+
+
+def test_audit_writes_json_to_a_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--format json --output writes the versioned JSON report and prints nothing."""
+    _audit_site(monkeypatch)
+    output = tmp_path / "report.json"
+
+    code = main(
+        [
+            "audit",
+            WP_PAGE,
+            "--format",
+            "json",
+            "--output",
+            str(output),
+            "--cache-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert code == 0
+    assert capsys.readouterr().out == ""
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert (payload["format"], payload["subjects"]) == ("cernis-report", [WP_PAGE])
+
+
+def test_audit_without_a_site_type_uses_host_detection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An undeclared WordPress page gets the generic extractor and unknown actors."""
+    _audit_site(monkeypatch)
+
+    main(["audit", WP_PAGE, "--cache-dir", str(tmp_path)])
+
+    out = capsys.readouterr().out
+    assert "extractor generic 1+n1, generic" in out
+    assert "- UNKNOWN · peri.canonical.present" in out
+
+
+def test_audit_refuses_a_url_it_cannot_fetch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A URL that is not absolute http(s) exits 2 with a message."""
+    _audit_site(monkeypatch)
+
+    assert main(["audit", "ftp://example.com/", "--cache-dir", str(tmp_path)]) == 2
+    assert "cernis audit:" in capsys.readouterr().err
+
+
+def test_audit_reports_an_unwritable_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An output path that cannot be written exits 2."""
+    _audit_site(monkeypatch)
+
+    code = main(
+        [
+            "audit",
+            WP_PAGE,
+            "--output",
+            str(tmp_path / "no" / "such" / "dir" / "r.md"),
+            "--cache-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert code == 2
+    assert "cannot write" in capsys.readouterr().err
+
+
+def test_audit_rejects_an_unknown_site_type(capsys: pytest.CaptureFixture[str]) -> None:
+    """--site-type is dev or wordpress."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["audit", WP_PAGE, "--site-type", "medium"])
+
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err

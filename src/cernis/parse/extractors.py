@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
+from cernis.model import ExtractorSelection
 from cernis.parse.html import Link, links_in, visible_text
 
 
@@ -62,6 +63,47 @@ _BY_SITE = {SiteType.DEV: DEV_ARTICLE, SiteType.WORDPRESS: WORDPRESS_ENTRY}
 _BY_HOST = {"dev.to": DEV_ARTICLE, "www.dev.to": DEV_ARTICLE}
 
 
+def select_extractor(
+    url: str, site: SiteType | None = None
+) -> tuple[Extractor, ExtractorSelection]:
+    """Choose the extractor for a page, and say how it was chosen.
+
+    :param url: The page's URL (the receipt's ``final_url``).
+    :param site: The site type the author declared, if any; it wins over the
+        host.
+    :return: The extractor, and whether it came from the declaration, the
+        host, or neither.
+    """
+    if site is not None:
+        return _BY_SITE[site], ExtractorSelection.DECLARED
+    try:
+        host = urlsplit(url).hostname or ""
+    except ValueError:
+        host = ""
+    if host in _BY_HOST:
+        return _BY_HOST[host], ExtractorSelection.HOST
+    return GENERIC, ExtractorSelection.GENERIC
+
+
+_SITE_BY_HOST = {"dev.to": SiteType.DEV, "www.dev.to": SiteType.DEV}
+
+
+def effective_site(url: str, declared: SiteType | None = None) -> SiteType | None:
+    """Return a page's site type: the declared one, else the one its host implies.
+
+    :param url: The page's URL.
+    :param declared: The declared site type, if any.
+    :return: The site type, or ``None`` if neither says.
+    """
+    if declared is not None:
+        return declared
+    try:
+        host = urlsplit(url).hostname or ""
+    except ValueError:
+        return None
+    return _SITE_BY_HOST.get(host)
+
+
 def choose_extractor(url: str, site: SiteType | None = None) -> Extractor:
     """Choose the extractor for a page.
 
@@ -70,13 +112,7 @@ def choose_extractor(url: str, site: SiteType | None = None) -> Extractor:
         host.
     :return: The extractor.
     """
-    if site is not None:
-        return _BY_SITE[site]
-    try:
-        host = urlsplit(url).hostname or ""
-    except ValueError:
-        host = ""
-    return _BY_HOST.get(host, GENERIC)
+    return select_extractor(url, site)[0]
 
 
 @dataclass(frozen=True, kw_only=True)

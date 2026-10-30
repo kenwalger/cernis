@@ -29,14 +29,14 @@ class CheckSpec:
 
 
 def _peri(id: str, description: str) -> CheckSpec:
-    """Register a planned peritext check at version 1.
+    """Register a peritext check at version 1 (implemented in Session 4b).
 
     :param id: The check id.
     :param description: The one-line description.
     :return: The check spec.
     """
     return CheckSpec(
-        id=id, version="1", family=Family.PERITEXT, description=description, implemented=False
+        id=id, version="1", family=Family.PERITEXT, description=description, implemented=True
     )
 
 
@@ -73,3 +73,19 @@ CHECKS: tuple[CheckSpec, ...] = (
     _epi("epi.links.resolve", "Links in the article body resolve."),
 )
 """Every registered check, peritext first, in DESIGN.md order."""
+
+
+_BY_ID = {spec.id: spec for spec in CHECKS}
+
+
+def check(check_id: str) -> CheckSpec:
+    """Look up a registered check.
+
+    :param check_id: The check id.
+    :return: Its spec.
+    :raises KeyError: If no check has that id.
+    """
+    try:
+        return _BY_ID[check_id]
+    except KeyError:
+        raise KeyError(f"no registered check {check_id!r}") from None

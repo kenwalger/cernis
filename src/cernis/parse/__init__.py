@@ -9,7 +9,9 @@ from cernis.parse.extractors import (
     Extractor,
     SiteType,
     choose_extractor,
+    effective_site,
     read_article,
+    select_extractor,
 )
 from cernis.parse.html import Canonical, JsonLdBlock, Link, MetaTag, ParsedPage, parse_page
 from cernis.parse.snapshot import NORMALIZATION_VERSION, SnapshotError, build_snapshot
@@ -31,6 +33,8 @@ __all__ = [
     "SnapshotError",
     "build_snapshot",
     "choose_extractor",
+    "effective_site",
     "parse_page",
     "read_article",
+    "select_extractor",
 ]

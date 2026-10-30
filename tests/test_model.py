@@ -17,10 +17,13 @@ from cernis.model import (
     ChangeClass,
     ErrorKind,
     Evidence,
+    ExtractorSelection,
     Finding,
     ModelError,
     ReasonCode,
     Receipt,
+    Run,
+    RunError,
     Snapshot,
     Status,
     finding_key,
@@ -126,6 +129,7 @@ def snapshot(**overrides: object) -> Snapshot:
         "receipt_id": "r-001",
         "extractor_id": "dev.article",
         "extractor_version": "1",
+        "extractor_selection": ExtractorSelection.HOST,
         "content_sha256": "c" * 64,
         "head_sha256": "d" * 64,
         "frame_sha256": "e" * 64,
@@ -809,3 +813,163 @@ def test_change_classes_match_design() -> None:
         "PLATFORM_RENDERING",
         "UNCLASSIFIED",
     }
+
+
+# Snapshot: how its extractor was selected
+
+
+def test_extractor_selections_are_declared_host_and_generic() -> None:
+    """DESIGN.md section 3: the snapshot records how its extractor was selected."""
+    assert {selection.value for selection in ExtractorSelection} == {"declared", "host", "generic"}
+
+
+def test_snapshot_extractor_selection_must_be_a_member() -> None:
+    """A plain string is not accepted."""
+    with pytest.raises(ModelError, match="extractor_selection"):
+        snapshot(extractor_selection="host")
+
+
+# Run
+
+
+def run(**overrides: object) -> Run:
+    """Build a valid run: one receipt, one snapshot, an observed defect, and its recommendation."""
+    page = receipt(
+        id="r-002",
+        requested_url="https://example.com/post",
+        final_url="https://example.com/post",
+        redirect_chain=(),
+    )
+    defect = observed(
+        id="f-001",
+        subject_url="https://example.com/post",
+        defect=True,
+        evidence=(Evidence(receipt_id="r-002", location="head", observed="x"),),
+    )
+    advice = recommendation(
+        id="f-002",
+        subject_url="https://example.com/post",
+        based_on=("f-001",),
+        check_id="peri.canonical.single",
+        target="fix",
+    )
+    fields: dict[str, Any] = {
+        "id": "20261030T120000Z",
+        "started_at": datetime(2026, 10, 30, 12, 0, tzinfo=UTC),
+        "finished_at": datetime(2026, 10, 30, 12, 0, 5, tzinfo=UTC),
+        "cernis_version": "0.1.0.dev0",
+        "subjects": ("https://example.com/post",),
+        "receipts": (page,),
+        "snapshots": (snapshot(receipt_id="r-002"),),
+        "findings": (defect, advice),
+    }
+    fields.update(overrides)
+    return Run(**fields)
+
+
+def test_a_valid_run_constructs() -> None:
+    """Receipts, snapshots, and findings that agree make a run."""
+    built = run()
+    assert [finding.id for finding in built.findings] == ["f-001", "f-002"]
+
+
+def test_a_run_error_is_a_model_error() -> None:
+    """Callers can catch every model rule the same way."""
+    assert issubclass(RunError, ModelError)
+
+
+def test_based_on_must_name_a_finding_in_the_run() -> None:
+    """A recommendation cannot rest on a finding that is not there."""
+    dangling = recommendation(
+        id="f-002", subject_url="https://example.com/post", based_on=("f-404",)
+    )
+    with pytest.raises(RunError, match="based_on"):
+        run(findings=(run().findings[0], dangling))
+
+
+def test_based_on_must_name_an_observed_finding() -> None:
+    """A recommendation rests on what was seen, not on another recommendation or a non liquet."""
+    first = run().findings[1]
+    second = recommendation(
+        id="f-003", subject_url="https://example.com/post", based_on=("f-002",), target="again"
+    )
+    with pytest.raises(RunError, match="OBSERVED"):
+        run(findings=(*run().findings, second))
+    assert first.status is Status.RECOMMENDATION
+
+
+def test_keys_must_be_unique_in_a_run() -> None:
+    """Two findings with one check, subject, and target would be indistinguishable in history."""
+    twin = observed(
+        id="f-003", subject_url="https://example.com/post/", evidence=run().findings[0].evidence
+    )
+    with pytest.raises(RunError, match="key"):
+        run(findings=(*run().findings, twin))
+
+
+def test_finding_ids_must_be_unique_in_a_run() -> None:
+    """based_on would be ambiguous."""
+    clash = observed(
+        id="f-001",
+        check_id="peri.title",
+        subject_url="https://example.com/post",
+        evidence=run().findings[0].evidence,
+    )
+    with pytest.raises(RunError, match="finding id"):
+        run(findings=(*run().findings, clash))
+
+
+def test_evidence_must_reference_a_receipt_in_the_run() -> None:
+    """Every finding is a receipt of what Cernis saw in this run."""
+    orphan = observed(
+        id="f-003",
+        check_id="peri.title",
+        subject_url="https://example.com/post",
+        evidence=(Evidence(receipt_id="r-999", location="head", observed="x"),),
+    )
+    with pytest.raises(RunError, match="r-999"):
+        run(findings=(*run().findings, orphan))
+
+
+def test_receipt_ids_must_be_unique_in_a_run() -> None:
+    """Evidence would be ambiguous."""
+    page = run().receipts[0]
+    with pytest.raises(RunError, match="receipt id"):
+        run(receipts=(page, page))
+
+
+def test_snapshots_must_reference_a_receipt_in_the_run() -> None:
+    """A snapshot is derived from a receipt the run holds."""
+    with pytest.raises(RunError, match="snapshot"):
+        run(snapshots=(snapshot(receipt_id="r-404"),))
+
+
+def test_findings_must_be_about_a_subject_of_the_run() -> None:
+    """A finding about a URL nobody asked about is a bug."""
+    stray = observed(
+        id="f-003",
+        check_id="peri.title",
+        subject_url="https://elsewhere.example/",
+        evidence=run().findings[0].evidence,
+    )
+    with pytest.raises(RunError, match="subject"):
+        run(findings=(*run().findings, stray))
+
+
+@pytest.mark.parametrize(
+    "times",
+    [
+        {"finished_at": datetime(2026, 10, 30, 11, 59, tzinfo=UTC)},
+        {"started_at": datetime(2026, 10, 30, 12, 0)},
+    ],
+)
+def test_run_times_are_utc_and_in_order(times: dict[str, datetime]) -> None:
+    """A run ends after it starts, in UTC."""
+    with pytest.raises(RunError, match="_at"):
+        run(**times)
+
+
+def test_a_run_needs_a_subject() -> None:
+    """A run audits at least one URL."""
+    with pytest.raises(RunError, match="subjects"):
+        run(subjects=(), findings=())

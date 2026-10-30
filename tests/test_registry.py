@@ -1,6 +1,8 @@
 """Tests for the check registry in :mod:`cernis.checks.registry`."""
 
-from cernis.checks.registry import CHECKS
+import pytest
+
+from cernis.checks.registry import CHECKS, check
 from cernis.model import Family
 
 DESIGN_CHECK_IDS = {
@@ -32,8 +34,8 @@ def test_check_ids_are_unique() -> None:
 
 def test_check_ids_match_their_family() -> None:
     """Every id starts with the prefix of its family."""
-    for check in CHECKS:
-        assert check.id.startswith(PREFIXES[check.family]), check.id
+    for spec in CHECKS:
+        assert spec.id.startswith(PREFIXES[spec.family]), spec.id
 
 
 def test_registry_lists_every_check_in_the_design() -> None:
@@ -41,15 +43,22 @@ def test_registry_lists_every_check_in_the_design() -> None:
     assert {check.id for check in CHECKS} == DESIGN_CHECK_IDS
 
 
-def test_planned_checks_are_version_one_and_unimplemented() -> None:
-    """Session 1 registers checks without implementing any of them."""
-    for check in CHECKS:
-        assert check.version == "1", check.id
-        assert check.implemented is False, check.id
+def test_peritext_checks_are_implemented_and_epitext_checks_are_not_yet() -> None:
+    """Session 4b implements the nine peritext checks; epitext checks are Phase 4."""
+    for spec in CHECKS:
+        assert spec.version == "1", spec.id
+        assert spec.implemented is (spec.family is Family.PERITEXT), spec.id
+
+
+def test_check_looks_up_by_id() -> None:
+    """check() returns the registered spec, and refuses an unknown id."""
+    assert check("peri.title").id == "peri.title"
+    with pytest.raises(KeyError):
+        check("peri.nonexistent")
 
 
 def test_descriptions_are_one_line() -> None:
     """Every check has a non-blank, single-line description."""
-    for check in CHECKS:
-        assert check.description.strip(), check.id
-        assert "\n" not in check.description, check.id
+    for spec in CHECKS:
+        assert spec.description.strip(), spec.id
+        assert "\n" not in spec.description, spec.id

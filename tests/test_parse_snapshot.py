@@ -12,7 +12,7 @@ import pytest
 from parse_support import DEV_URL, WORDPRESS_URL, fixture, receipt_for
 from selectolax.lexbor import LexborHTMLParser
 
-from cernis.model import ErrorKind, Snapshot
+from cernis.model import ErrorKind, ExtractorSelection, Snapshot
 from cernis.parse import (
     NORMALIZATION_VERSION,
     SiteType,
@@ -286,6 +286,12 @@ def test_the_snapshot_records_the_extractor_and_normalization_versions() -> None
         f"1+n{NORMALIZATION_VERSION}",
     )
     assert snapshot.receipt_id == "r-001"
+    assert snapshot.extractor_selection is ExtractorSelection.HOST
+    declared = snap(fixture("wordpress-entry"), WORDPRESS_URL, SiteType.WORDPRESS)
+    assert declared.extractor_selection is ExtractorSelection.DECLARED
+    assert snap(fixture("wordpress-entry"), WORDPRESS_URL).extractor_selection is (
+        ExtractorSelection.GENERIC
+    )
 
 
 def test_a_page_with_no_extractor_has_no_content_hash() -> None:

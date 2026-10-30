@@ -4,13 +4,18 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cernis import REPOSITORY_URL, __version__
+from cernis.audit import Target, audit
 from cernis.checks.registry import CHECKS, CheckSpec
 from cernis.fetch import FetchConfig, Fetcher, FetchError, FetchResult, RobotsDecision
 from cernis.fetch.cache import DEFAULT_CACHE_DIR
 from cernis.model import Receipt
+from cernis.parse import SiteType
+from cernis.report import report_json, report_markdown
+from cernis.report.json_report import receipt_as_dict
 
 STATUS_MESSAGE = (
     "Cernis is in early development and nothing is usable yet. It will be a "
@@ -18,7 +23,7 @@ STATUS_MESSAGE = (
     "published article and the things around it, run deterministic checks, and "
     "report findings that distinguish what was observed, what is recommended, "
     "and what cannot be determined, with no scores and no predicted outcomes. "
-    "Run `cernis checks` to see the planned checks. "
+    "Run `cernis audit <url>` to audit a page, or `cernis checks` to see the checks. "
     f"Follow along at {REPOSITORY_URL}."
 )
 
@@ -48,6 +53,44 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("table", "json"),
         default="table",
         help="output format (default: table)",
+    )
+    audit_parser = commands.add_parser(
+        "audit",
+        help="audit published articles and report what was observed, recommended, and unknown",
+        description=(
+            "Fetch each URL politely, run the peritext checks on every page read whole, "
+            "and report the findings."
+        ),
+    )
+    audit_parser.add_argument(
+        "urls", nargs="+", metavar="url", help="an absolute http or https URL"
+    )
+    audit_parser.add_argument(
+        "--site-type",
+        choices=[site.value for site in SiteType],
+        help="declare the site type of every URL given (overrides host detection)",
+    )
+    audit_parser.add_argument(
+        "--format",
+        choices=("md", "json"),
+        default="md",
+        help="report format (default: md)",
+    )
+    audit_parser.add_argument(
+        "--output",
+        type=Path,
+        help="write the report to this file instead of standard output",
+    )
+    audit_parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=DEFAULT_CACHE_DIR,
+        help=f"cache directory for conditional requests (default: {DEFAULT_CACHE_DIR})",
+    )
+    audit_parser.add_argument(
+        "--allow-loopback",
+        action="store_true",
+        help="allow loopback addresses, for testing against a local server",
     )
     fetch = commands.add_parser(
         "fetch",
@@ -119,28 +162,6 @@ def format_checks_json(checks: Sequence[CheckSpec]) -> str:
         ],
     }
     return json.dumps(payload, indent=2)
-
-
-def receipt_as_dict(receipt: Receipt) -> dict[str, object]:
-    """Represent a receipt as JSON-ready data.
-
-    :param receipt: The receipt.
-    :return: Its fields, with the time in ISO 8601 and headers as an object.
-    """
-    return {
-        "id": receipt.id,
-        "requested_url": receipt.requested_url,
-        "final_url": receipt.final_url,
-        "redirect_chain": list(receipt.redirect_chain),
-        "status_code": receipt.status_code,
-        "error_kind": receipt.error_kind.value,
-        "fetched_at": receipt.fetched_at.isoformat(),
-        "body_sha256": receipt.body_sha256,
-        "body_truncated_at": receipt.body_truncated_at,
-        "headers": dict(receipt.headers),
-        "cernis_version": receipt.cernis_version,
-        "user_agent": receipt.user_agent,
-    }
 
 
 def _decision_as_dict(decision: RobotsDecision) -> dict[str, object]:
@@ -246,6 +267,46 @@ def run_fetch(url: str, cache_dir: Path, output_format: str, allow_loopback: boo
     return 0
 
 
+def run_audit(
+    urls: Sequence[str],
+    site_type: str | None,
+    output_format: str,
+    output: Path | None,
+    cache_dir: Path,
+    allow_loopback: bool = False,
+) -> int:
+    """Audit URLs and write the report.
+
+    :param urls: The URLs.
+    :param site_type: The declared site type for every URL, or ``None``.
+    :param output_format: ``md`` or ``json``.
+    :param output: The file to write, or ``None`` for standard output.
+    :param cache_dir: The cache directory.
+    :param allow_loopback: Whether loopback addresses are allowed.
+    :return: The exit code: 0 when the audit ran (whatever it found), 2 when a
+        URL cannot be fetched at all or the report cannot be written.
+    """
+    site = SiteType(site_type) if site_type is not None else None
+    targets = [Target(url=url, site=site) for url in urls]
+    config = FetchConfig(cache_dir=cache_dir, allow_loopback=allow_loopback)
+    try:
+        with Fetcher(config) as fetcher:
+            run = audit(targets, fetcher, now=lambda: datetime.now(UTC))
+    except FetchError as exc:
+        print(f"cernis audit: {exc}", file=sys.stderr)
+        return 2
+    text = report_json(run) if output_format == "json" else report_markdown(run)
+    if output is None:
+        sys.stdout.write(text)
+        return 0
+    try:
+        output.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"cernis audit: cannot write {output}: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the ``cernis`` command.
 
@@ -260,6 +321,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             print(format_checks_table(CHECKS))
         return 0
+    if args.command == "audit":
+        return run_audit(
+            args.urls,
+            args.site_type,
+            args.format,
+            args.output,
+            args.cache_dir,
+            args.allow_loopback,
+        )
     if args.command == "fetch":
         return run_fetch(args.url, args.cache_dir, args.format, args.allow_loopback)
     print(STATUS_MESSAGE)
