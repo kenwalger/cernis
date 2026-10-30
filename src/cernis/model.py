@@ -89,6 +89,8 @@ class ExtractorSelection(StrEnum):
 
     DECLARED = "declared"
     """From the URL's declared site type (``--site-type`` or the pair map)."""
+    PREFIX = "prefix"
+    """From the longest matching prefix rule in the pair map."""
     HOST = "host"
     """From a known host, such as ``dev.to``."""
     GENERIC = "generic"

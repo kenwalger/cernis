@@ -27,7 +27,7 @@ from cernis.checks.peritext import peritext_findings
 from cernis.checks.recommend import recommendations_for
 from cernis.fetch import Fetcher
 from cernis.model import Finding, Receipt, Run, Snapshot
-from cernis.parse import SiteType, build_snapshot, effective_site, parse_page
+from cernis.parse import SitePrefix, SiteType, build_snapshot, effective_site, parse_page
 from cernis.urls import normalize_url
 
 __all__ = ["Target", "audit", "peritext_findings", "run_id_for"]
@@ -38,7 +38,9 @@ class Target:
     """One URL to audit.
 
     :param url: The URL.
-    :param site: Its declared site type, or ``None`` to use host detection.
+    :param site: Its declared site type (from ``--site-type`` or its own
+        entry in the pair map), or ``None`` to use prefix rules and host
+        detection.
     """
 
     url: str
@@ -59,6 +61,7 @@ def audit(
     fetcher: Fetcher,
     *,
     now: Callable[[], datetime],
+    prefixes: Sequence[SitePrefix] = (),
 ) -> Run:
     """Audit each URL once, in order, and return the validated run.
 
@@ -67,6 +70,9 @@ def audit(
     :param targets: The URLs, with their declared site types.
     :param fetcher: The fetcher; one fetcher is one run.
     :param now: The current time, timezone-aware, in UTC.
+    :param prefixes: Prefix rules from the pair map. A target's own site type
+        wins over them; they win over host detection. They are matched
+        against the URL that answered, after redirects.
     :return: The run.
     :raises ValueError: If no URL is given. A
         :class:`~cernis.fetch.FetchError` for a URL that cannot be fetched at
@@ -96,14 +102,16 @@ def audit(
         subjects.append(subject)
         for receipt in (*result.robots_receipts, *result.receipts):
             receipts.setdefault(receipt.id, receipt)
-        outcome = classify(result, effective_site(subject, target.site))
+        outcome = classify(result, effective_site(subject, target.site, prefixes))
         if not isinstance(outcome, Readable):
             findings.extend(not_determinable_findings(outcome, subject_url=subject, new_id=new_id))
             continue
         page_url = outcome.receipt.final_url or subject
-        site = effective_site(page_url, target.site)
+        site = effective_site(page_url, target.site, prefixes)
         page = parse_page(outcome.receipt, outcome.body)
-        snapshots.append(build_snapshot(outcome.receipt, outcome.body, site=target.site))
+        snapshots.append(
+            build_snapshot(outcome.receipt, outcome.body, site=target.site, prefixes=prefixes)
+        )
         observed = peritext_findings(
             page, outcome.receipt, subject_url=subject, site=site, new_id=new_id
         )

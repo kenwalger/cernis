@@ -60,11 +60,12 @@ so changing a rule here shows in history as a ``CHECKER`` change.
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from cernis.model import ErrorKind, Receipt, Snapshot
-from cernis.parse.extractors import SiteType, find_body, select_extractor
+from cernis.parse.extractors import SitePrefix, SiteType, find_body, select_extractor
 from cernis.parse.html import (
     NON_TEXT_ELEMENTS,
     is_json_ld,
@@ -240,13 +241,20 @@ def _frame_tokens(tree: LexborHTMLParser, body: LexborNode | None) -> list[list[
     return tokens
 
 
-def build_snapshot(receipt: Receipt, body: bytes, *, site: SiteType | None = None) -> Snapshot:
+def build_snapshot(
+    receipt: Receipt,
+    body: bytes,
+    *,
+    site: SiteType | None = None,
+    prefixes: Sequence[SitePrefix] = (),
+) -> Snapshot:
     """Build the snapshot of a receipt's whole body.
 
     :param receipt: A receipt with a whole body: ``error_kind`` ``NONE`` and a
         ``body_sha256`` (a ``200``, or a ``304`` with its cached body).
     :param body: The body, which must hash to ``receipt.body_sha256``.
     :param site: The site type the author declared, if any.
+    :param prefixes: Prefix rules from the pair map.
     :return: The snapshot.
     :raises SnapshotError: If the receipt has no whole body (it failed, was
         cut off at the size limit, or had no body) or ``body`` is not that
@@ -257,7 +265,9 @@ def build_snapshot(receipt: Receipt, body: bytes, *, site: SiteType | None = Non
     if hashlib.sha256(body).hexdigest() != receipt.body_sha256:
         raise SnapshotError(f"the body given is not the body of receipt {receipt.id}")
     tree, _ = parse_tree(body, receipt.header("content-type"))
-    extractor, selection = select_extractor(receipt.final_url or receipt.requested_url, site)
+    extractor, selection = select_extractor(
+        receipt.final_url or receipt.requested_url, site, prefixes
+    )
     match = find_body(tree, extractor)
     content = None if match.node is None else _sha256(visible_text(match.node))
     return Snapshot(

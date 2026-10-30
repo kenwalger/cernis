@@ -17,8 +17,8 @@ gives none when there is no canonical, since there is nothing to assess.
 everything; on DEV the author controls what the front matter sets (the
 canonical URL, the description, the title and cover image behind
 ``og:title``, ``og:description``, and ``og:image``) and the platform
-controls the template (``og:url``, ``lang``, JSON-LD, and the ``<title>``
-DEV builds as "<title> - DEV Community"). With no known site type, the actor
+controls the template (``og:type``, ``og:url``, ``lang``, JSON-LD, and the
+``<title>`` DEV builds as "<title> - DEV Community"). With no known site type, the actor
 is ``UNKNOWN``.
 
 Lengths are counted in characters after whitespace is collapsed and NFC is
@@ -34,14 +34,24 @@ from cernis.parse.extractors import SiteType
 from cernis.parse.html import Canonical, MetaTag, ParsedPage, normalize_text
 from cernis.urls import UrlMatch, compare_urls, is_absolute_http_url
 
-OG_CORE: tuple[str, ...] = ("og:title", "og:description", "og:image", "og:url")
-"""The four properties ``peri.og.core`` reports on, in order."""
+OG_CORE: tuple[str, ...] = ("og:title", "og:type", "og:description", "og:image", "og:url")
+"""The five properties ``peri.og.core`` reports on, in order."""
+
+OG_REQUIRED: frozenset[str] = frozenset({"og:title", "og:type", "og:image", "og:url"})
+"""The Open Graph protocol's required properties (ogp.me, "Basic Metadata")."""
+
+OPEN_GRAPH = "the Open Graph protocol (ogp.me)"
+"""How a finding names the Open Graph standard."""
+
+WCAG_LANGUAGE = "WCAG 2 success criterion 3.1.1 (Language of Page, Level A)"
+"""How a finding names the WCAG criterion for a page's language."""
 
 WHOLE_DOCUMENT = "the whole document"
 """The location of a search that covered the page and found nothing."""
 
 _DEV_PLATFORM = frozenset(
     {
+        ("peri.og.core", "og:type"),
         ("peri.og.core", "og:url"),
         ("peri.og.url_matches_canonical", ""),
         ("peri.lang", ""),
@@ -357,43 +367,71 @@ def meta_description(ctx: _Context) -> list[Finding]:
     ]
 
 
-def og_core(ctx: _Context) -> list[Finding]:
-    """``peri.og.core``: presence of each core Open Graph property. Never a defect.
+def uses_open_graph(page: ParsedPage) -> bool:
+    """Tell whether a page declares any Open Graph property.
 
-    One finding per property, the property as the target.
+    :param page: The parsed page.
+    :return: Whether any ``meta`` names a key starting ``og:``, in either
+        ``property`` or ``name``.
+    """
+    return any(tag.key.strip().lower().startswith("og:") for tag in page.meta)
+
+
+def og_missing(page: ParsedPage, prop: str) -> bool:
+    """Tell whether an Open Graph property is missing: absent, or with no value.
+
+    A property declared with ``name=`` and a value counts as present (most
+    consumers read it), so it is reported, not called missing.
+
+    :param page: The parsed page.
+    :param prop: The property.
+    :return: Whether no tag for it has a non-blank ``content``.
+    """
+    return not any(tag.content and tag.content.strip() for tag in page.og(prop))
+
+
+def og_core(ctx: _Context) -> list[Finding]:
+    """``peri.og.core``: presence of each core Open Graph property, one finding each.
+
+    The property is the target. Defect when the page uses Open Graph (it
+    declares at least one ``og:`` property) and a property the Open Graph
+    protocol requires (``og:title``, ``og:type``, ``og:image``, ``og:url``)
+    is missing: absent, empty, or with no ``content``. A page with no
+    ``og:`` properties at all is a fact, never a defect. ``og:description``
+    is optional and never a defect.
 
     :param ctx: The check context.
-    :return: Four findings.
+    :return: Five findings.
     """
+    uses = uses_open_graph(ctx.page)
     findings: list[Finding] = []
     for prop in OG_CORE:
         tags = list(ctx.page.og(prop))
         standard = [tag for tag in tags if tag.attribute == "property"]
         if not tags:
             evidence = [ctx.evidence(WHOLE_DOCUMENT, None, f'a <meta property="{prop}">')]
-            findings.append(
-                ctx.observed("peri.og.core", f"{prop} is absent.", evidence, target=prop)
-            )
-            continue
-        chosen = standard[0] if standard else tags[0]
-        if not standard:
-            state = "is declared with name= rather than property="
-        elif chosen.content is None:
-            state = "is present but has no content attribute"
-        elif not chosen.content.strip():
-            state = "is present but empty"
-        elif len(standard) > 1:
-            state = f"is declared {len(standard)} times"
+            state = "is absent"
         else:
-            state = "is present"
-        findings.append(
-            ctx.observed(
-                "peri.og.core",
-                f"{prop} {state}.",
-                [_meta_evidence(ctx, tag) for tag in tags],
-                target=prop,
+            evidence = [_meta_evidence(ctx, tag) for tag in tags]
+            chosen = standard[0] if standard else tags[0]
+            if not standard:
+                state = "is declared with name= rather than property="
+            elif chosen.content is None:
+                state = "is present but has no content attribute"
+            elif not chosen.content.strip():
+                state = "is present but empty"
+            elif len(standard) > 1:
+                state = f"is declared {len(standard)} times"
+            else:
+                state = "is present"
+        defect = uses and prop in OG_REQUIRED and og_missing(ctx.page, prop)
+        summary = f"{prop} {state}."
+        if defect:
+            summary += (
+                f" The page uses Open Graph, and {OPEN_GRAPH} requires {prop} on every page "
+                "that does."
             )
-        )
+        findings.append(ctx.observed("peri.og.core", summary, evidence, target=prop, defect=defect))
     return findings
 
 
@@ -479,7 +517,12 @@ def og_url_matches_canonical(ctx: _Context) -> list[Finding]:
 
 
 def lang(ctx: _Context) -> list[Finding]:
-    """``peri.lang``: the ``<html lang>`` value, or its absence. Never a defect.
+    """``peri.lang``: the ``<html lang>`` value, or its absence.
+
+    Defect when the attribute is missing or empty: WCAG 2 success criterion
+    3.1.1 (Language of Page, Level A) requires the page's default language
+    to be programmatically determinable. Whether a value is a valid
+    language tag is not checked.
 
     :param ctx: The check context.
     :return: One finding.
@@ -487,14 +530,18 @@ def lang(ctx: _Context) -> list[Finding]:
     value = ctx.page.lang
     if value is None:
         evidence = [ctx.evidence("<html>", None, "a lang attribute")]
-        summary = "The page does not declare a language (no lang attribute on <html>)."
+        summary = (
+            "The page does not declare a language (no lang attribute on <html>); "
+            f"{WCAG_LANGUAGE} requires one."
+        )
     elif not value.strip():
         evidence = [ctx.evidence("html lang", value)]
-        summary = "The page's lang attribute is empty."
+        summary = f"The page's lang attribute is empty; {WCAG_LANGUAGE} requires a language."
     else:
         evidence = [ctx.evidence("html lang", value)]
         summary = f"The page declares its language as {value!r}."
-    return [ctx.observed("peri.lang", summary, evidence)]
+    defect = value is None or not value.strip()
+    return [ctx.observed("peri.lang", summary, evidence, defect=defect)]
 
 
 def jsonld_parses(ctx: _Context) -> list[Finding]:

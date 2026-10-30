@@ -44,9 +44,14 @@ def test_registry_lists_every_check_in_the_design() -> None:
 
 
 def test_peritext_checks_are_implemented_and_epitext_checks_are_not_yet() -> None:
-    """Session 4b implements the nine peritext checks; epitext checks are Phase 4."""
+    """Session 4b implements the nine peritext checks; epitext checks are Phase 4.
+
+    Session 4d bumped peri.lang and peri.og.core to version 2; every other
+    check is still at version 1.
+    """
+    bumped = {"peri.lang", "peri.og.core"}
     for spec in CHECKS:
-        assert spec.version == "1", spec.id
+        assert spec.version == ("2" if spec.id in bumped else "1"), spec.id
         assert spec.implemented is (spec.family is Family.PERITEXT), spec.id
 
 

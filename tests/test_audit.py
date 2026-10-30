@@ -21,7 +21,7 @@ from cernis.model import (
     RunError,
     Status,
 )
-from cernis.parse import SiteType
+from cernis.parse import SitePrefix, SiteType
 
 PAGE = "https://blog.example.com/two-canonicals/"
 HTML = {"content-type": "text/html; charset=utf-8"}
@@ -85,9 +85,9 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
         ExtractorSelection.DECLARED,
     )
     statuses = [f.status for f in run.findings]
-    assert statuses.count(Status.OBSERVED) == 12
+    assert statuses.count(Status.OBSERVED) == 13
     assert statuses.count(Status.RECOMMENDATION) == 1
-    assert [f.id for f in run.findings] == [f"f-{n:03d}" for n in range(1, 14)]
+    assert [f.id for f in run.findings] == [f"f-{n:03d}" for n in range(1, 15)]
     (advice,) = [f for f in run.findings if f.status is Status.RECOMMENDATION]
     (based,) = advice.based_on
     assert next(f for f in run.findings if f.id == based).check_id == "peri.canonical.single"
@@ -269,3 +269,58 @@ def test_no_urls_is_an_error(tmp_path: Path) -> None:
     """An audit needs something to audit."""
     with pytest.raises(ValueError, match="at least one URL"):
         audit([], make_fetcher(Site(), tmp_path), now=Clock())
+
+
+# Prefix rules (Session 4d)
+
+BLOG_RULE = SitePrefix(prefix="https://blog.example.com/", site=SiteType.WORDPRESS)
+
+
+def test_a_prefix_rule_chooses_the_extractor_and_is_recorded(tmp_path: Path) -> None:
+    """An undeclared URL under a prefix gets the prefix's site type, marked 'prefix'."""
+    site = Site()
+    site.add(PAGE, respond(200, fixture("two-canonicals"), HTML))
+
+    run = audit([Target(url=PAGE)], make_fetcher(site, tmp_path), now=Clock(), prefixes=[BLOG_RULE])
+
+    (snapshot,) = run.snapshots
+    assert (snapshot.extractor_id, snapshot.extractor_selection) == (
+        "wordpress.entry",
+        ExtractorSelection.PREFIX,
+    )
+    assert {f.actor.value for f in run.findings} == {"AUTHOR"}
+
+
+def test_a_declaration_beats_a_prefix_rule(tmp_path: Path) -> None:
+    """A URL's own site type wins over any prefix."""
+    site = Site()
+    site.add(PAGE, respond(200, fixture("two-canonicals"), HTML))
+
+    run = audit(
+        [Target(url=PAGE, site=SiteType.DEV)],
+        make_fetcher(site, tmp_path),
+        now=Clock(),
+        prefixes=[BLOG_RULE],
+    )
+
+    (snapshot,) = run.snapshots
+    assert (snapshot.extractor_id, snapshot.extractor_selection) == (
+        "dev.article",
+        ExtractorSelection.DECLARED,
+    )
+
+
+def test_a_prefix_rule_is_matched_against_the_url_that_answered(tmp_path: Path) -> None:
+    """A redirect into the prefix counts; the page is what was read."""
+    site = Site()
+    site.add("https://short.example/p", redirect(PAGE))
+    site.add(PAGE, respond(200, fixture("two-canonicals"), HTML))
+
+    run = audit(
+        [Target(url="https://short.example/p")],
+        make_fetcher(site, tmp_path),
+        now=Clock(),
+        prefixes=[BLOG_RULE],
+    )
+
+    assert run.snapshots[0].extractor_selection is ExtractorSelection.PREFIX

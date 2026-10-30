@@ -1,13 +1,13 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/cernis-mark-dark.svg">
-  <img alt="Cernis" src="img/cernis-mark-light.svg" width="96">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kenwalger/cernis/main/img/cernis-mark-dark.png">
+  <img alt="Cernis" src="https://raw.githubusercontent.com/kenwalger/cernis/main/img/cernis-mark-light.png" width="96">
 </picture>
 
 ---
 
 # Brand
 
-**Version:** 1 (2026-10-30)
+**Version:** 1.1 (2026-10-30)
 
 How the Cernis name and logo are presented, so that future sessions, contributors, and the author do not improvise with them. Cernis is a sibling of [Afterword](https://github.com/kenwalger/Afterword): it shares Afterword's palette and typeface family, but has its own concept and mark.
 
@@ -57,10 +57,10 @@ As with Afterword, where meaning is carried by posture before color, the Cernis 
 | Role | Name | Hex | Notes |
 | --- | --- | --- | --- |
 | Observed (bottom band) | Paper | `#F2F2F2` | Shared with Afterword's dark variant |
-| Recommendation (top band), and the middle band's outline | Afterword Blue, light | `#689BC3` | See the note below |
+| Recommendation (top band), and the middle band's outline | Afterword Blue, light | `#689BC3` | Shared with Afterword (see below) |
 | Not determinable (middle band fill) | Slate | `#34495A` | |
 
-**To reconcile:** the dark-mode blue in the current artwork is `#689BC3`. Afterword's BRAND.md proposes `#6B9BC3` for the same role. The two are visually indistinguishable (contrast on `#0D1117` is 6.37:1 and 6.40:1), but the brands should share one value. Pick one, update both documents, and bump their versions.
+`#689BC3` is the shared dark-mode blue for both brands. Afterword's BRAND.md, which proposes `#6B9BC3` for the same role, will be updated to match after November 10.
 
 ### Contrast
 
@@ -92,7 +92,9 @@ The mark is artwork, not live text. Use the source files; never redraw the C fro
 | Mark, dark backgrounds | `img/cernis-mark-dark.svg` (PNG fallback `img/cernis-mark-dark.png`) | Dark themes, including GitHub dark mode |
 | Mark plus wordmark, light | `img/cernis-logo-light.svg` (to be created) | README header, documents |
 | Mark plus wordmark, dark | `img/cernis-logo-dark.svg` (to be created) | Dark themes |
-| Favicons | `img/favicon-16x16.png`, `img/favicon-32x32.png`, `img/favicon.ico`, `img/apple-touch-icon.png` (180), `img/android-chrome-192x192.png`, `img/android-chrome-512x512.png`, `img/site.webmanifest` (to be created) | Browser tabs, app icons, avatars |
+| Favicons, light | `img/favicon-16x16.png`, `img/favicon-32x32.png`, `img/favicon.ico`, `img/apple-touch-icon.png` (180), `img/android-chrome-192x192.png`, `img/android-chrome-512x512.png`, `img/site.webmanifest` | Browser tabs, app icons, avatars (the default) |
+| Favicons, dark | The same seven files in `img/favicon_io_dark/` | Where an icon sits on a dark background, such as a dark-theme site or app |
+| Illustrator sources | `img/logo_light.ai`, `img/logo_dark.ai` | The master artwork for the light and dark marks; export every other file from these, never edit the exports |
 
 One version of the mark serves every size. It was tested at 64, 32, 24, and 16 pixels on white and on GitHub's dark background (`#0D1117`): the C stays whole at every size, and the three bands remain distinguishable in grayscale. No separate small-size variant is needed.
 
@@ -110,16 +112,16 @@ Prefer SVG; PNG is the fallback. Favicons are exported from the light mark; chec
 
 ## Using the logo in the README
 
-Serve the light or dark variant automatically according to the viewer's theme:
+Serve the light or dark variant automatically according to the viewer's theme. The README is also the package's long description, which PyPI renders on the project page, where a path relative to the repository does not resolve. So the README names the PNG files by absolute URLs on `raw.githubusercontent.com` (the `main` branch), which work on GitHub and on PyPI alike. PNG rather than SVG, since every Markdown renderer that shows images shows PNG. The images appear only once the files are on `main`.
 
 ```html
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/cernis-mark-dark.svg">
-  <img alt="Cernis" src="img/cernis-mark-light.svg" width="96">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kenwalger/cernis/main/img/cernis-mark-dark.png">
+  <img alt="Cernis" src="https://raw.githubusercontent.com/kenwalger/cernis/main/img/cernis-mark-light.png" width="96">
 </picture>
 ```
 
-Switch to the mark-plus-wordmark files once they exist.
+Switch to the mark-plus-wordmark files once they exist. Inside the repository (this file, `docs/`), relative paths are fine.
 
 ## The same idea in the reports
 
@@ -132,3 +134,4 @@ Changes to colors, variants, or rules update this document and bump its version.
 | Version | Date | Change |
 | --- | --- | --- |
 | 1 | 2026-10-30 | First version: the three-band C, light and dark variants, palette shared with Afterword |
+| 1.1 | 2026-10-30 | The C's typeface recorded (IBM Plex Sans Bold); `#689BC3` made the shared dark-mode blue; the Variants table completed (the web manifest exists; the dark favicon set and the Illustrator sources added); the README logo moved to absolute PNG URLs so it renders on PyPI |

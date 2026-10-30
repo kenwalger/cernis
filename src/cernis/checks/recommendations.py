@@ -77,6 +77,32 @@ TEMPLATES: tuple[RecommendationTemplate, ...] = (
         ),
     ),
     RecommendationTemplate(
+        id="peri.og.core.add-required",
+        check_id="peri.og.core",
+        action=(
+            'Add {prop} to the page\'s <head> as <meta property="{prop}" content="...">, '
+            "giving the page's {meaning}."
+        ),
+        rationale=(
+            "The Open Graph protocol (ogp.me) requires og:title, og:type, og:image, and "
+            "og:url on every page that uses it; this page declares og: properties, but "
+            "{prop} {state}."
+        ),
+    ),
+    RecommendationTemplate(
+        id="peri.lang.add-lang",
+        check_id="peri.lang",
+        action=(
+            "Add a lang attribute to the <html> element declaring the page's language, "
+            'such as lang="en".'
+        ),
+        rationale=(
+            "WCAG 2 success criterion 3.1.1 (Language of Page, Level A) requires a page's "
+            "default human language to be programmatically determinable, and this page's "
+            "<html> element {state}."
+        ),
+    ),
+    RecommendationTemplate(
         id="peri.og.url_matches_canonical.align",
         check_id="peri.og.url_matches_canonical",
         action=("Set og:url and the canonical link to the same URL: the page's preferred URL."),

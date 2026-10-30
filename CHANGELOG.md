@@ -71,7 +71,14 @@ uses [Semantic Versioning](https://semver.org/).
 - `cernis audit <url> ... [--site-type dev|wordpress] [--format md|json]
   [--output FILE]`.
 - The pair map format (`docs/PAIR-MAP.md`) and its loader (`cernis.pairs`).
-- `Snapshot.extractor_selection`: declared, host, or generic.
+- `Snapshot.extractor_selection`: declared, prefix, host, or generic.
+- Path-prefix site types: `[[site]]` entries in the pair map, the longest
+  matching prefix winning, and `cernis audit --map FILE`.
+- `peri.lang` 2: a missing or empty `lang` is a defect (WCAG 2 SC 3.1.1).
+- `peri.og.core` 2: reports `og:type`; on a page that uses Open Graph, a
+  missing required property (`og:title`, `og:type`, `og:image`, `og:url`)
+  is a defect. Two new recommendation templates.
+- The README logo uses absolute PNG URLs, so it renders on PyPI.
 
 ## [0.0.1] - 2026-10-28
 

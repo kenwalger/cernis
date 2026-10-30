@@ -30,6 +30,12 @@ NewId = Callable[[], str]
 """Returns the next finding id in the run."""
 
 _ACTIONABLE = frozenset({Actor.AUTHOR, Actor.UNKNOWN})
+_OG_MEANING = {
+    "og:title": "title",
+    "og:type": "type, such as article",
+    "og:image": "image URL",
+    "og:url": "canonical URL",
+}
 _ABSOLUTE_TEMPLATES = {
     "relative": "peri.canonical.absolute.make-absolute",
     "no href": "peri.canonical.absolute.add-href",
@@ -132,6 +138,29 @@ def recommendations_for(
                     canonical=named[0] or "" if named else "",
                 )
             )
+        elif finding.check_id == "peri.og.core":
+            prop = finding.target
+            tags = page.og(prop)
+            if not tags:
+                state = "is absent"
+            elif all(tag.content is None for tag in tags):
+                state = "has no content attribute"
+            else:
+                state = "is empty"
+            advice.append(
+                _recommend(
+                    "peri.og.core.add-required",
+                    finding,
+                    prop,
+                    new_id,
+                    prop=prop,
+                    meaning=_OG_MEANING[prop],
+                    state=state,
+                )
+            )
+        elif finding.check_id == "peri.lang":
+            state = "has no lang attribute" if page.lang is None else "has an empty lang attribute"
+            advice.append(_recommend("peri.lang.add-lang", finding, "", new_id, state=state))
         elif finding.check_id == "peri.jsonld.parses":
             block_number = finding.target.removeprefix("block ")
             block = page.json_ld[int(block_number) - 1]

@@ -151,3 +151,83 @@ def test_one_url_declared_once_and_left_undeclared_once_is_fine() -> None:
     )
 
     assert parse_pair_map(text).site_types() == {"https://a.example/": SiteType.WORDPRESS}
+
+
+# [[site]] prefix rules (Session 4d)
+
+SITES = """
+format = 1
+
+[[site]]
+prefix = "https://www.kenwalger.com/blog/"
+type = "wordpress"
+
+[[site]]
+prefix = "https://dev.to/"
+type = "dev"
+"""
+
+
+def test_site_rules_are_read_in_order_and_a_map_may_have_only_sites() -> None:
+    """[[site]] entries become prefix rules; pairs are optional when there are sites."""
+    loaded = parse_pair_map(SITES)
+
+    assert loaded.pairs == ()
+    assert [(rule.prefix, rule.site) for rule in loaded.sites] == [
+        ("https://www.kenwalger.com/blog/", SiteType.WORDPRESS),
+        ("https://dev.to/", SiteType.DEV),
+    ]
+
+
+def test_sites_and_pairs_together() -> None:
+    """A map can declare pairs and prefix rules."""
+    loaded = parse_pair_map(VALID + SITES.replace("format = 1\n", ""))
+
+    assert (len(loaded.pairs), len(loaded.sites)) == (2, 2)
+
+
+def _site(body: str) -> str:
+    """Write a map with one [[site]].
+
+    :param body: The site table's lines.
+    :return: The map.
+    """
+    return f"format = 1\n[[site]]\n{body}\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("format = 1\n", r"at least one \[\[pair\]\] or \[\[site\]\]"),
+        ('format = 1\nsite = "https://a.example/"\n', "site must be an array"),
+        (
+            _site('prefix = "https://a.example/"\ntype = "dev"\nkind = "x"'),
+            "site 1: unknown key kind",
+        ),
+        (_site('type = "dev"'), "site 1: prefix must be an absolute"),
+        (_site('prefix = "/blog/"\ntype = "dev"'), "prefix must be an absolute"),
+        (_site('prefix = "https://a.example/?x=1"\ntype = "dev"'), "query or a fragment"),
+        (_site('prefix = "https://a.example/#x"\ntype = "dev"'), "query or a fragment"),
+        (_site('prefix = "https://a.example/"'), "site 1, type: must be one of dev, wordpress"),
+        (_site('prefix = "https://a.example/"\ntype = "medium"'), "must be one of dev, wordpress"),
+        (
+            _site('prefix = "https://a.example/blog/"\ntype = "dev"')
+            + '[[site]]\nprefix = "https://A.example/blog"\ntype = "wordpress"\n',
+            "site 2: .* type wordpress here but dev in site 1",
+        ),
+    ],
+)
+def test_every_site_rule_is_enforced_and_named(text: str, message: str) -> None:
+    """Each broken [[site]] rule fails with a message that says where."""
+    with pytest.raises(PairMapError, match=message):
+        parse_pair_map(text)
+
+
+def test_one_prefix_given_the_same_type_twice_is_fine() -> None:
+    """Repeating a rule is redundant, not wrong."""
+    text = (
+        _site('prefix = "https://a.example/"\ntype = "dev"')
+        + '[[site]]\nprefix = "https://a.example"\ntype = "dev"\n'
+    )
+
+    assert len(parse_pair_map(text).sites) == 2

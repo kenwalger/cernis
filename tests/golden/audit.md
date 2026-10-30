@@ -2,7 +2,7 @@
 
 Run: 20261030T120000Z · Cernis 0.1.0.dev0
 Started: 2026-10-30T12:00:00+00:00 · Finished: 2026-10-30T12:00:01+00:00
-Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 1 · peri.og.url_matches_canonical 1 · peri.lang 1 · peri.jsonld.parses 1 · peri.title 1
+Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 2 · peri.og.url_matches_canonical 1 · peri.lang 2 · peri.jsonld.parses 1 · peri.title 1
 
 Subjects:
 
@@ -10,7 +10,7 @@ Subjects:
 - https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 1+n1, declared
 - https://blog.example.com/gone/: not read (FETCH_FAILED)
 
-## Observed (24)
+## Observed (26)
 
 ### https://dev.to/example-author/a-synthetic-post-1a2b
 
@@ -33,6 +33,10 @@ Subjects:
 - AUTHOR · peri.og.core · og:title
   og:title is present.
   Evidence: `head > meta[property="og:title"] content`: `A Synthetic Post About Fixtures` (receipt r-002)
+
+- PLATFORM · peri.og.core · og:type
+  og:type is present.
+  Evidence: `head > meta[property="og:type"] content`: `article` (receipt r-002)
 
 - AUTHOR · peri.og.core · og:description
   og:description is present.
@@ -88,6 +92,10 @@ Subjects:
   og:title is absent.
   Evidence: `the whole document`: searched for a \<meta property="og:title"\>, found none (receipt r-004)
 
+- AUTHOR · peri.og.core · og:type
+  og:type is absent.
+  Evidence: `the whole document`: searched for a \<meta property="og:type"\>, found none (receipt r-004)
+
 - AUTHOR · peri.og.core · og:description
   og:description is absent.
   Evidence: `the whole document`: searched for a \<meta property="og:description"\>, found none (receipt r-004)
@@ -124,10 +132,10 @@ Subjects:
   Why: The page declares 2 canonical links that name different URLs (https://blog.example.com/two-canonicals/, https://dev.to/example-author/two-canonicals-5e6f). RFC 6596 defines the canonical link relation as naming one preferred URL for a page; links that disagree leave that URL undeclared.
   Based on: peri.canonical.single (The page declares 2 canonical links that name different URLs.)
 
-## Not determinable (non liquet) (12)
+## Not determinable (non liquet) (13)
 
 ### https://blog.example.com/gone/
 
 - The page could not be read: the request timed out.
-  Reason: FETCH_FAILED. Not determinable: whether the page declares a canonical link; how many canonical URLs the page declares, and whether they agree; whether the page's canonical URL is absolute; whether the page has a meta description, and how long it is; whether the page declares og:title; whether the page declares og:description; whether the page declares og:image; whether the page declares og:url; whether og:url agrees with the canonical URL; whether the page declares its language; whether the page's JSON-LD blocks parse; what the page's title is, and how long it is.
+  Reason: FETCH_FAILED. Not determinable: whether the page declares a canonical link; how many canonical URLs the page declares, and whether they agree; whether the page's canonical URL is absolute; whether the page has a meta description, and how long it is; whether the page declares og:title; whether the page declares og:type; whether the page declares og:description; whether the page declares og:image; whether the page declares og:url; whether og:url agrees with the canonical URL; whether the page declares its language; whether the page's JSON-LD blocks parse; what the page's title is, and how long it is.
   Evidence: `error_kind`: `TIMEOUT` (receipt r-005)

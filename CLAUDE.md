@@ -21,7 +21,7 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Phase 3, part one (foundations) is built (session 4a, 2026-10-30).** `src/cernis/parse/` (parser, extractors, snapshots, on selectolax), `src/cernis/urls.py` (the one URL normalization and `compare_urls`), and final finding keys, which must not change before Phase 5 without an ADR.
 
-**Phase 3 is built (session 4b, 2026-10-30).** The nine peritext checks, fetch outcomes as `NOT_DETERMINABLE` findings, recommendations, a self-validating `Run`, JSON and Markdown reports, `cernis audit`, and the pair map format (`docs/PAIR-MAP.md`). Golden report files are in `tests/golden/`; regenerate them only with `CERNIS_UPDATE_GOLDEN=1`, and read the diff.
+**Phase 3 is built (session 4b, 2026-10-30).** The nine peritext checks, fetch outcomes as `NOT_DETERMINABLE` findings, recommendations, a self-validating `Run`, JSON and Markdown reports, `cernis audit`, and the pair map format (`docs/PAIR-MAP.md`). Golden report files are in `tests/golden/`; regenerate them only with `CERNIS_UPDATE_GOLDEN=1`, and read the diff. Session 4d finished Phase 3: path-prefix site types (`[[site]]`, `cernis audit --map`) and standards defects in `peri.lang` and `peri.og.core` (both at version 2).
 
 **Next: Phase 4, epitext checks** (DESIGN.md section 10), including the flagship pair check and `cernis pairs --map`. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 

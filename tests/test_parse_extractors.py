@@ -10,9 +10,12 @@ from cernis.parse import (
     EXTRACTORS,
     GENERIC,
     WORDPRESS_ENTRY,
+    SitePrefix,
     SiteType,
     choose_extractor,
+    prefix_site,
     read_article,
+    resolve_site,
     select_extractor,
 )
 
@@ -141,3 +144,75 @@ def test_selection_says_how_the_extractor_was_chosen(
 ) -> None:
     """Declared, host, or generic (DESIGN.md section 3)."""
     assert select_extractor(url, site)[1] is selection
+
+
+# Prefix rules (Session 4d)
+
+BLOG = SitePrefix(prefix="https://www.kenwalger.com/blog/", site=SiteType.WORDPRESS)
+DEV_BLOG = SitePrefix(prefix="https://www.kenwalger.com/blog/dev-copies", site=SiteType.DEV)
+POST = "https://www.kenwalger.com/blog/writing/views-measure-views-nine-years-writing"
+
+
+@pytest.mark.parametrize(
+    ("url", "declared", "prefixes", "expected"),
+    [
+        (POST, None, [BLOG], (SiteType.WORDPRESS, ExtractorSelection.PREFIX)),
+        (POST, SiteType.DEV, [BLOG], (SiteType.DEV, ExtractorSelection.DECLARED)),
+        ("https://www.kenwalger.com/about/", None, [BLOG], (None, ExtractorSelection.GENERIC)),
+        (DEV_URL, None, [BLOG], (SiteType.DEV, ExtractorSelection.HOST)),
+        (
+            DEV_URL,
+            None,
+            [SitePrefix(prefix="https://dev.to/", site=SiteType.WORDPRESS)],
+            (SiteType.WORDPRESS, ExtractorSelection.PREFIX),
+        ),
+    ],
+)
+def test_declared_then_prefix_then_host_then_generic(
+    url: str,
+    declared: SiteType | None,
+    prefixes: list[SitePrefix],
+    expected: tuple[SiteType | None, ExtractorSelection],
+) -> None:
+    """A declaration beats a prefix, which beats the host, which beats nothing."""
+    assert resolve_site(url, declared, prefixes) == expected
+
+
+def test_the_longest_matching_prefix_wins() -> None:
+    """A more specific prefix overrides a broader one, in either order."""
+    url = "https://www.kenwalger.com/blog/dev-copies/a-post"
+
+    assert prefix_site(url, [BLOG, DEV_BLOG]) is SiteType.DEV
+    assert prefix_site(url, [DEV_BLOG, BLOG]) is SiteType.DEV
+    assert prefix_site(POST, [BLOG, DEV_BLOG]) is SiteType.WORDPRESS
+
+
+@pytest.mark.parametrize(
+    ("url", "matches"),
+    [
+        ("https://www.kenwalger.com/blog", True),
+        ("https://www.kenwalger.com/blog/", True),
+        ("https://WWW.kenwalger.com:443/blog/x/#top", True),
+        ("https://www.kenwalger.com/blog?page=2", True),
+        ("https://www.kenwalger.com/blogger", False),
+        ("https://www.kenwalger.com/", False),
+        ("http://www.kenwalger.com/blog/x", False),
+        ("https://kenwalger.com/blog/x", False),
+    ],
+)
+def test_prefixes_match_whole_segments_after_normalization(url: str, matches: bool) -> None:
+    """Case, default ports, and trailing slashes do not matter; scheme, host, and segments do."""
+    assert (prefix_site(url, [BLOG]) is SiteType.WORDPRESS) is matches
+
+
+def test_a_root_prefix_covers_a_whole_host() -> None:
+    """A prefix of just the origin covers every URL on it."""
+    rule = SitePrefix(prefix="https://blog.example.com", site=SiteType.WORDPRESS)
+
+    assert prefix_site("https://blog.example.com/2026/10/x/", [rule]) is SiteType.WORDPRESS
+    assert prefix_site("https://other.example.com/", [rule]) is None
+
+
+def test_select_extractor_reports_a_prefix_selection() -> None:
+    """The extractor follows the prefix's site type, and says so."""
+    assert select_extractor(POST, None, [BLOG]) == (WORDPRESS_ENTRY, ExtractorSelection.PREFIX)

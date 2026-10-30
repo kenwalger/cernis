@@ -28,15 +28,16 @@ class CheckSpec:
     implemented: bool
 
 
-def _peri(id: str, description: str) -> CheckSpec:
-    """Register a peritext check at version 1 (implemented in Session 4b).
+def _peri(id: str, description: str, version: str = "1") -> CheckSpec:
+    """Register a peritext check (implemented in Session 4b).
 
     :param id: The check id.
     :param description: The one-line description.
+    :param version: The check's version.
     :return: The check spec.
     """
     return CheckSpec(
-        id=id, version="1", family=Family.PERITEXT, description=description, implemented=True
+        id=id, version=version, family=Family.PERITEXT, description=description, implemented=True
     )
 
 
@@ -57,9 +58,16 @@ CHECKS: tuple[CheckSpec, ...] = (
     _peri("peri.canonical.single", "The page declares exactly one canonical URL."),
     _peri("peri.canonical.absolute", "The canonical URL is absolute and well formed."),
     _peri("peri.meta.description", "A meta description exists; its length is reported."),
-    _peri("peri.og.core", "og:title, og:description, og:image, and og:url are present."),
+    # Version 2 (Session 4d): reports og:type; a missing required property is a
+    # defect on a page that uses Open Graph.
+    _peri(
+        "peri.og.core",
+        "og:title, og:type, og:description, og:image, and og:url are present.",
+        version="2",
+    ),
     _peri("peri.og.url_matches_canonical", "og:url agrees with the canonical URL."),
-    _peri("peri.lang", "The <html> element sets a lang attribute."),
+    # Version 2 (Session 4d): a missing or empty lang is a defect (WCAG 2 SC 3.1.1).
+    _peri("peri.lang", "The <html> element sets a lang attribute.", version="2"),
     _peri("peri.jsonld.parses", "JSON-LD blocks parse as JSON; their @type is reported."),
     _peri("peri.title", "The <title> and its length are reported."),
     _epi(

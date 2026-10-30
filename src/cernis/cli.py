@@ -13,9 +13,11 @@ from cernis.checks.registry import CHECKS, CheckSpec
 from cernis.fetch import FetchConfig, Fetcher, FetchError, FetchResult, RobotsDecision
 from cernis.fetch.cache import DEFAULT_CACHE_DIR
 from cernis.model import Receipt
-from cernis.parse import SiteType
+from cernis.pairs import PairMapError, load_pair_map
+from cernis.parse import SitePrefix, SiteType
 from cernis.report import report_json, report_markdown
 from cernis.report.json_report import receipt_as_dict
+from cernis.urls import normalize_url
 
 STATUS_MESSAGE = (
     "Cernis is in early development and nothing is usable yet. It will be a "
@@ -69,6 +71,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--site-type",
         choices=[site.value for site in SiteType],
         help="declare the site type of every URL given (overrides host detection)",
+    )
+    audit_parser.add_argument(
+        "--map",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "a pair map (docs/PAIR-MAP.md) whose per-URL site types and [[site]] prefix "
+            "rules apply; --site-type overrides both"
+        ),
     )
     audit_parser.add_argument(
         "--format",
@@ -274,6 +285,7 @@ def run_audit(
     output: Path | None,
     cache_dir: Path,
     allow_loopback: bool = False,
+    pair_map: Path | None = None,
 ) -> int:
     """Audit URLs and write the report.
 
@@ -283,15 +295,26 @@ def run_audit(
     :param output: The file to write, or ``None`` for standard output.
     :param cache_dir: The cache directory.
     :param allow_loopback: Whether loopback addresses are allowed.
+    :param pair_map: A pair map whose site types apply, or ``None``.
     :return: The exit code: 0 when the audit ran (whatever it found), 2 when a
-        URL cannot be fetched at all or the report cannot be written.
+        URL cannot be fetched at all, the pair map cannot be read, or the
+        report cannot be written.
     """
     site = SiteType(site_type) if site_type is not None else None
-    targets = [Target(url=url, site=site) for url in urls]
+    declared: dict[str, SiteType] = {}
+    prefixes: tuple[SitePrefix, ...] = ()
+    if pair_map is not None:
+        try:
+            loaded = load_pair_map(pair_map)
+        except PairMapError as exc:
+            print(f"cernis audit: {exc}", file=sys.stderr)
+            return 2
+        declared, prefixes = loaded.site_types(), loaded.sites
+    targets = [Target(url=url, site=site or declared.get(normalize_url(url))) for url in urls]
     config = FetchConfig(cache_dir=cache_dir, allow_loopback=allow_loopback)
     try:
         with Fetcher(config) as fetcher:
-            run = audit(targets, fetcher, now=lambda: datetime.now(UTC))
+            run = audit(targets, fetcher, now=lambda: datetime.now(UTC), prefixes=prefixes)
     except FetchError as exc:
         print(f"cernis audit: {exc}", file=sys.stderr)
         return 2
@@ -329,6 +352,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output,
             args.cache_dir,
             args.allow_loopback,
+            args.map,
         )
     if args.command == "fetch":
         return run_fetch(args.url, args.cache_dir, args.format, args.allow_loopback)

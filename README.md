@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="img/cernis-mark-dark.svg">
-  <img alt="Cernis" src="img/cernis-mark-light.svg" width="96">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/kenwalger/cernis/main/img/cernis-mark-dark.png">
+  <img alt="Cernis" src="https://raw.githubusercontent.com/kenwalger/cernis/main/img/cernis-mark-light.png" width="96">
 </picture>
 
 ---

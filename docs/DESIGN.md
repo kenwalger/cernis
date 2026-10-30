@@ -160,7 +160,7 @@ Snapshot
   frame_sha256       the rest of the page, normalized (navigation, footer, template)
 ```
 
-Finding the article body needs a site-aware extractor (DEV's article container, WordPress's entry content). The extractor is chosen by the URL's **declared site type** first (from the pair map file or a `--site-type` option), then by known hosts (dev.to); otherwise the generic extractor is used, which returns no body. Cernis does not guess a site type from page content. If the extractor finds no body, or finds more than one candidate, `content_sha256` is None, and any change involving that snapshot is `UNCLASSIFIED`. The snapshot records how its extractor was selected.
+Finding the article body needs a site-aware extractor (DEV's article container, WordPress's entry content). The extractor is chosen by the URL's **declared site type** first (a `--site-type` option, then the URL's own entry in the pair map file), then by the longest matching **prefix rule** in the pair map (`[[site]]`), then by known hosts (dev.to); otherwise the generic extractor is used, which returns no body. Cernis does not guess a site type from page content. If the extractor finds no body, or finds more than one candidate, `content_sha256` is None, and any change involving that snapshot is `UNCLASSIFIED`. The snapshot records which rule selected its extractor: declared, prefix, host, or generic.
 
 ### URL comparison
 
@@ -192,9 +192,9 @@ Checks against the fetched HTML of the article itself.
 | `peri.canonical.single` | How many canonicals, and their values | More than one with values that are not `IDENTICAL` or `EQUIVALENT` |
 | `peri.canonical.absolute` | Whether the canonical is an absolute URL | Relative or malformed |
 | `peri.meta.description` | Presence, and length in characters | Never (absence and length are facts) |
-| `peri.og.core` | Presence of `og:title`, `og:description`, `og:image`, `og:url`, one finding per property (the property is the `target`) | Never |
+| `peri.og.core` | Presence of `og:title`, `og:type`, `og:description`, `og:image`, `og:url`, one finding per property (the property is the `target`) | The page declares at least one `og:` property and a property the Open Graph protocol requires (`og:title`, `og:type`, `og:image`, `og:url`) is absent or empty. A page with no `og:` properties at all is a fact, never a defect; `og:description` is optional |
 | `peri.og.url_matches_canonical` | The URL comparison outcome | `DIFFERENT` |
-| `peri.lang` | The `<html lang>` value, or its absence | Never |
+| `peri.lang` | The `<html lang>` value, or its absence | The attribute is missing or empty (WCAG 2 success criterion 3.1.1, Language of Page, Level A) |
 | `peri.jsonld.parses` | Each JSON-LD block's `@type`, one finding per block | A block fails to parse as JSON |
 | `peri.title` | The `<title>` and its length | Never |
 

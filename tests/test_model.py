@@ -818,9 +818,14 @@ def test_change_classes_match_design() -> None:
 # Snapshot: how its extractor was selected
 
 
-def test_extractor_selections_are_declared_host_and_generic() -> None:
-    """DESIGN.md section 3: the snapshot records how its extractor was selected."""
-    assert {selection.value for selection in ExtractorSelection} == {"declared", "host", "generic"}
+def test_extractor_selections_are_declared_prefix_host_and_generic() -> None:
+    """DESIGN.md section 3: the snapshot records which rule selected its extractor."""
+    assert {selection.value for selection in ExtractorSelection} == {
+        "declared",
+        "prefix",
+        "host",
+        "generic",
+    }
 
 
 def test_snapshot_extractor_selection_must_be_a_member() -> None:

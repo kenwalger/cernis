@@ -11,13 +11,16 @@ extractor shows in history as a ``CHECKER`` change, not a page change.
   history says ``UNCLASSIFIED`` rather than guess which part is the article.
 
 The extractor is chosen by a declared site type when there is one, else by
-host (``dev.to``), else ``generic``. A WordPress site cannot be recognized by
-its host, so it must be declared.
+the longest matching prefix rule from the pair map, else by host
+(``dev.to``), else ``generic`` (:func:`resolve_site`). A WordPress site
+cannot be recognized by its host, so it must be declared, one URL at a time
+or by prefix.
 
 An extractor never guesses: if its selector matches more than one element,
 the body is ambiguous and none is returned, with the reason.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from urllib.parse import urlsplit
@@ -26,6 +29,7 @@ from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from cernis.model import ExtractorSelection
 from cernis.parse.html import Link, links_in, visible_text
+from cernis.urls import normalize_url
 
 
 class SiteType(StrEnum):
@@ -59,49 +63,119 @@ GENERIC = Extractor(id="generic", version="1", selectors=())
 EXTRACTORS: tuple[Extractor, ...] = (DEV_ARTICLE, WORDPRESS_ENTRY, GENERIC)
 """Every extractor."""
 
-_BY_SITE = {SiteType.DEV: DEV_ARTICLE, SiteType.WORDPRESS: WORDPRESS_ENTRY}
-_BY_HOST = {"dev.to": DEV_ARTICLE, "www.dev.to": DEV_ARTICLE}
+_BY_SITE: dict[SiteType | None, Extractor] = {
+    SiteType.DEV: DEV_ARTICLE,
+    SiteType.WORDPRESS: WORDPRESS_ENTRY,
+    None: GENERIC,
+}
+_SITE_BY_HOST = {"dev.to": SiteType.DEV, "www.dev.to": SiteType.DEV}
 
 
-def select_extractor(
-    url: str, site: SiteType | None = None
-) -> tuple[Extractor, ExtractorSelection]:
-    """Choose the extractor for a page, and say how it was chosen.
+@dataclass(frozen=True, kw_only=True)
+class SitePrefix:
+    """A rule that every URL under a prefix is on one kind of site.
 
-    :param url: The page's URL (the receipt's ``final_url``).
-    :param site: The site type the author declared, if any; it wins over the
-        host.
-    :return: The extractor, and whether it came from the declaration, the
-        host, or neither.
+    :param prefix: An absolute http(s) URL naming a site or a part of one,
+        such as ``https://www.kenwalger.com/blog/``.
+    :param site: The site type of every URL under it.
     """
-    if site is not None:
-        return _BY_SITE[site], ExtractorSelection.DECLARED
+
+    prefix: str
+    site: SiteType
+
+
+def _under(url: str, prefix: str) -> bool:
+    """Tell whether a normalized URL is at or under a normalized prefix.
+
+    Matching is by whole path segments, so ``/blog`` covers ``/blog`` and
+    ``/blog/a`` but not ``/blogger``.
+
+    :param url: The URL, normalized.
+    :param prefix: The prefix, normalized.
+    :return: Whether the URL is under the prefix.
+    """
+    if url == prefix:
+        return True
+    head = prefix if prefix.endswith("/") else prefix + "/"
+    return url.startswith(head) or url.startswith(prefix + "?")
+
+
+def prefix_site(url: str, prefixes: Sequence[SitePrefix]) -> SiteType | None:
+    """Find the site type the longest matching prefix gives a URL.
+
+    Both sides are compared after URL normalization
+    (:func:`cernis.urls.normalize_url`), so scheme and host case, default
+    ports, and a trailing slash do not matter, while ``http`` and ``https``,
+    or ``www`` and no ``www``, do.
+
+    :param url: The URL.
+    :param prefixes: The prefix rules.
+    :return: The site type of the longest prefix the URL is under, or ``None``.
+    """
+    target = normalize_url(url)
+    best: tuple[int, SiteType] | None = None
+    for rule in prefixes:
+        prefix = normalize_url(rule.prefix)
+        if _under(target, prefix) and (best is None or len(prefix) > best[0]):
+            best = (len(prefix), rule.site)
+    return best[1] if best else None
+
+
+def resolve_site(
+    url: str, declared: SiteType | None = None, prefixes: Sequence[SitePrefix] = ()
+) -> tuple[SiteType | None, ExtractorSelection]:
+    """Decide a page's site type, and which rule decided it.
+
+    The order is: a declaration (``--site-type``, or the URL's own entry in
+    the pair map), then the longest matching prefix rule, then a known host
+    (``dev.to``), then nothing.
+
+    :param url: The page's URL.
+    :param declared: The declared site type, if any.
+    :param prefixes: Prefix rules from the pair map.
+    :return: The site type (``None`` if no rule gives one) and the rule.
+    """
+    if declared is not None:
+        return declared, ExtractorSelection.DECLARED
+    by_prefix = prefix_site(url, prefixes)
+    if by_prefix is not None:
+        return by_prefix, ExtractorSelection.PREFIX
     try:
         host = urlsplit(url).hostname or ""
     except ValueError:
         host = ""
-    if host in _BY_HOST:
-        return _BY_HOST[host], ExtractorSelection.HOST
-    return GENERIC, ExtractorSelection.GENERIC
+    if host in _SITE_BY_HOST:
+        return _SITE_BY_HOST[host], ExtractorSelection.HOST
+    return None, ExtractorSelection.GENERIC
 
 
-_SITE_BY_HOST = {"dev.to": SiteType.DEV, "www.dev.to": SiteType.DEV}
+def select_extractor(
+    url: str, site: SiteType | None = None, prefixes: Sequence[SitePrefix] = ()
+) -> tuple[Extractor, ExtractorSelection]:
+    """Choose the extractor for a page, and say how it was chosen.
+
+    :param url: The page's URL (the receipt's ``final_url``).
+    :param site: The site type the author declared, if any; it wins over
+        prefixes and the host.
+    :param prefixes: Prefix rules from the pair map.
+    :return: The extractor, and whether it came from the declaration, a
+        prefix rule, the host, or none of them.
+    """
+    found, selection = resolve_site(url, site, prefixes)
+    return _BY_SITE[found], selection
 
 
-def effective_site(url: str, declared: SiteType | None = None) -> SiteType | None:
-    """Return a page's site type: the declared one, else the one its host implies.
+def effective_site(
+    url: str, declared: SiteType | None = None, prefixes: Sequence[SitePrefix] = ()
+) -> SiteType | None:
+    """Return a page's site type by :func:`resolve_site`'s rules.
 
     :param url: The page's URL.
     :param declared: The declared site type, if any.
-    :return: The site type, or ``None`` if neither says.
+    :param prefixes: Prefix rules from the pair map.
+    :return: The site type, or ``None`` if no rule gives one.
     """
-    if declared is not None:
-        return declared
-    try:
-        host = urlsplit(url).hostname or ""
-    except ValueError:
-        return None
-    return _SITE_BY_HOST.get(host)
+    return resolve_site(url, declared, prefixes)[0]
 
 
 def choose_extractor(url: str, site: SiteType | None = None) -> Extractor:
@@ -172,15 +246,21 @@ class Article:
     problem: str | None
 
 
-def read_article(tree: LexborHTMLParser, url: str, site: SiteType | None = None) -> Article:
+def read_article(
+    tree: LexborHTMLParser,
+    url: str,
+    site: SiteType | None = None,
+    prefixes: Sequence[SitePrefix] = (),
+) -> Article:
     """Find and read a page's article body.
 
     :param tree: The parsed document.
     :param url: The page's URL, for choosing the extractor.
     :param site: The site type the author declared, if any.
+    :param prefixes: Prefix rules from the pair map.
     :return: The article body, or the reason there is none.
     """
-    extractor = choose_extractor(url, site)
+    extractor = select_extractor(url, site, prefixes)[0]
     match = find_body(tree, extractor)
     if match.node is None:
         return Article(extractor=extractor, found=False, text=None, links=(), problem=match.problem)

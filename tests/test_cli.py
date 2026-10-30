@@ -307,7 +307,7 @@ def test_audit_prints_a_markdown_report(
     out = capsys.readouterr().out
     assert code == 0
     assert out.startswith("# Cernis audit: A Post With Two Canonicals\n")
-    assert "## Observed (12)" in out
+    assert "## Observed (13)" in out
     assert "## Recommendations (1)" in out
     assert "extractor wordpress.entry 1+n1, declared" in out
 
@@ -389,3 +389,55 @@ def test_audit_rejects_an_unknown_site_type(capsys: pytest.CaptureFixture[str]) 
 
     assert excinfo.value.code == 2
     assert "invalid choice" in capsys.readouterr().err
+
+
+def test_audit_reads_site_types_from_a_pair_map(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--map applies [[site]] prefixes; --site-type overrides them."""
+    _audit_site(monkeypatch)
+    pair_map = tmp_path / "pairs.toml"
+    pair_map.write_text(
+        'format = 1\n[[site]]\nprefix = "https://blog.example.com/"\ntype = "wordpress"\n',
+        encoding="utf-8",
+    )
+    cache = str(tmp_path / "cache")
+
+    main(["audit", WP_PAGE, "--map", str(pair_map), "--cache-dir", cache])
+    by_prefix = capsys.readouterr().out
+    main(["audit", WP_PAGE, "--map", str(pair_map), "--site-type", "dev", "--cache-dir", cache])
+    overridden = capsys.readouterr().out
+
+    assert "extractor wordpress.entry 1+n1, prefix" in by_prefix
+    assert "extractor dev.article 1+n1, declared" in overridden
+
+
+def test_audit_uses_a_urls_own_site_in_the_map_over_a_prefix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A URL declared in a [[pair]] beats a [[site]] prefix that covers it."""
+    _audit_site(monkeypatch)
+    pair_map = tmp_path / "pairs.toml"
+    pair_map.write_text(
+        "format = 1\n"
+        f'[[pair]]\noriginal = {{ url = "{WP_PAGE}", site = "dev" }}\n'
+        'copy = { url = "https://dev.to/x/y" }\n'
+        '[[site]]\nprefix = "https://blog.example.com/"\ntype = "wordpress"\n',
+        encoding="utf-8",
+    )
+
+    main(["audit", WP_PAGE, "--map", str(pair_map), "--cache-dir", str(tmp_path / "c")])
+
+    assert "extractor dev.article 1+n1, declared" in capsys.readouterr().out
+
+
+def test_audit_refuses_a_bad_pair_map(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A map that does not load exits 2 with the loader's message, before any request."""
+    _audit_site(monkeypatch)
+    bad = tmp_path / "bad.toml"
+    bad.write_text("format = 2\n", encoding="utf-8")
+
+    assert main(["audit", WP_PAGE, "--map", str(bad)]) == 2
+    assert "format must be 1" in capsys.readouterr().err

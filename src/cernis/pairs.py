@@ -1,22 +1,26 @@
 """The pair map: which article is the original and which the copy (docs/PAIR-MAP.md).
 
 A pair map is a TOML file that lists original and copy URLs and, for each
-URL, may declare its site type. A declared site type chooses the article-body
-extractor and overrides host detection (DESIGN.md section 3). Phase 4's
-``cernis pairs --map`` runs the pair check over it; this module only reads
-and validates it.
+URL, may declare its site type, and that may give site types to whole parts
+of a site by URL prefix (``[[site]]``). A site type chooses the article-body
+extractor (DESIGN.md section 3): a URL's own declaration wins, then the
+longest matching prefix, then host detection. ``cernis audit --map`` reads
+it for site types; Phase 4's ``cernis pairs --map`` will run the pair check
+over it.
 
 Loading is strict, so a typo fails loudly instead of being ignored: unknown
 keys, a missing URL, a URL that is not absolute http(s), an unknown site
-type, a pair whose copy is its own original, and one URL declared with two
-different site types are all errors, each naming where it is.
+type, a pair whose copy is its own original, one URL declared with two
+different site types, a prefix with a query or fragment, and one prefix
+given two different site types are all errors, each naming where it is.
 """
 
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from cernis.parse.extractors import SiteType
+from cernis.parse.extractors import SitePrefix, SiteType
 from cernis.urls import is_absolute_http_url, normalize_url
 
 FORMAT_VERSION = 1
@@ -56,9 +60,11 @@ class PairMap:
     """A loaded pair map.
 
     :param pairs: The pairs, in file order.
+    :param sites: The prefix rules, in file order.
     """
 
     pairs: tuple[Pair, ...]
+    sites: tuple[SitePrefix, ...] = ()
 
     def site_types(self) -> dict[str, SiteType]:
         """Return every declared site type, by normalized URL.
@@ -99,6 +105,60 @@ def _site_url(value: object, where: str) -> SiteUrl:
         raise PairMapError(f"{where}: site must be one of {allowed}, got {site!r}") from None
 
 
+def _site_type(value: object, where: str) -> SiteType:
+    """Read a site type.
+
+    :param value: The TOML value.
+    :param where: Where it is, for messages.
+    :return: The site type.
+    :raises PairMapError: If it is not ``dev`` or ``wordpress``.
+    """
+    if isinstance(value, str) and value in {member.value for member in SiteType}:
+        return SiteType(value)
+    allowed = ", ".join(member.value for member in SiteType)
+    raise PairMapError(f"{where}: must be one of {allowed}, got {value!r}")
+
+
+def _site_prefixes(entries: object) -> tuple[SitePrefix, ...]:
+    """Read the ``[[site]]`` prefix rules.
+
+    :param entries: The TOML value of ``site``, or ``None``.
+    :return: The rules, in file order.
+    :raises PairMapError: If a rule breaks a rule.
+    """
+    if entries is None:
+        return ()
+    if not isinstance(entries, list):
+        raise PairMapError("site must be an array of tables: [[site]]")
+    rules: list[SitePrefix] = []
+    seen: dict[str, tuple[SiteType, int]] = {}
+    for number, entry in enumerate(entries, start=1):
+        where = f"site {number}"
+        if not isinstance(entry, dict):
+            raise PairMapError(f"{where}: must be a table")
+        unknown = sorted(set(entry) - {"prefix", "type"})
+        if unknown:
+            raise PairMapError(f"{where}: unknown key {', '.join(unknown)}")
+        prefix = entry.get("prefix")
+        if not isinstance(prefix, str) or not is_absolute_http_url(prefix):
+            raise PairMapError(
+                f"{where}: prefix must be an absolute http or https URL, got {prefix!r}"
+            )
+        parts = urlsplit(prefix)
+        if parts.query or parts.fragment or "?" in prefix or "#" in prefix:
+            raise PairMapError(f"{where}: prefix must not have a query or a fragment")
+        site = _site_type(entry.get("type"), f"{where}, type")
+        key = normalize_url(prefix)
+        if key in seen and seen[key][0] is not site:
+            raise PairMapError(
+                f"{where}: {prefix} is given type {site} here but {seen[key][0]} "
+                f"in site {seen[key][1]}"
+            )
+        seen.setdefault(key, (site, number))
+        rules.append(SitePrefix(prefix=prefix, site=site))
+    return tuple(rules)
+
+
 def parse_pair_map(text: str) -> PairMap:
     """Read a pair map from TOML text.
 
@@ -110,14 +170,17 @@ def parse_pair_map(text: str) -> PairMap:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise PairMapError(f"not valid TOML: {exc}") from exc
-    unknown = sorted(set(data) - {"format", "pair"})
+    unknown = sorted(set(data) - {"format", "pair", "site"})
     if unknown:
         raise PairMapError(f"unknown top-level key {', '.join(unknown)}")
     if data.get("format") != FORMAT_VERSION:
         raise PairMapError(f"format must be {FORMAT_VERSION}, got {data.get('format')!r}")
-    entries = data.get("pair")
-    if not isinstance(entries, list) or not entries:
-        raise PairMapError("there must be at least one [[pair]]")
+    sites = _site_prefixes(data.get("site"))
+    entries = data.get("pair", [])
+    if not isinstance(entries, list):
+        raise PairMapError("pair must be an array of tables: [[pair]]")
+    if not entries and not sites:
+        raise PairMapError("there must be at least one [[pair]] or [[site]]")
     pairs: list[Pair] = []
     declared: dict[str, tuple[SiteType, str]] = {}
     for number, entry in enumerate(entries, start=1):
@@ -142,7 +205,7 @@ def parse_pair_map(text: str) -> PairMap:
                 )
             declared.setdefault(key, (item.site, f"pair {number}, {role}"))
         pairs.append(Pair(original=original, copy=copy))
-    return PairMap(pairs=tuple(pairs))
+    return PairMap(pairs=tuple(pairs), sites=sites)
 
 
 def load_pair_map(path: Path) -> PairMap:

@@ -30,12 +30,22 @@ WP_CANONICAL = "https://blog.example.com/2026/10/a-synthetic-post/"
 Row = tuple[str, str, Status, bool, Actor, str]
 
 
-def og_rows(actor: Actor, states: dict[str, str], url_actor: Actor | None = None) -> list[Row]:
-    """Write the four peri.og.core rows.
+OG_PROPS = ("og:title", "og:type", "og:description", "og:image", "og:url")
+
+
+def og_rows(
+    actor: Actor,
+    states: dict[str, str],
+    platform: Actor | None = None,
+    defects: frozenset[str] = frozenset(),
+) -> list[Row]:
+    """Write the five peri.og.core rows.
 
     :param actor: The actor for og:title, og:description, and og:image.
     :param states: Each property's summary ending, such as ``is present.``.
-    :param url_actor: The actor for og:url, if different.
+    :param platform: The actor for og:type and og:url, if different (DEV).
+    :param defects: The properties expected to be defects: required, missing,
+        on a page that uses Open Graph. Their summary names the standard.
     :return: The rows.
     """
     return [
@@ -43,16 +53,25 @@ def og_rows(actor: Actor, states: dict[str, str], url_actor: Actor | None = None
             "peri.og.core",
             prop,
             OBS,
-            False,
-            url_actor if prop == "og:url" and url_actor else actor,
-            f"{prop} {states[prop]}",
+            prop in defects,
+            platform if prop in ("og:type", "og:url") and platform else actor,
+            f"{prop} {states[prop]}"
+            + (
+                f" The page uses Open Graph, and the Open Graph protocol (ogp.me) requires {prop} on every page that does."
+                if prop in defects
+                else ""
+            ),
         )
-        for prop in ("og:title", "og:description", "og:image", "og:url")
+        for prop in OG_PROPS
     ]
 
 
-ALL_PRESENT = {p: "is present." for p in ("og:title", "og:description", "og:image", "og:url")}
-ALL_ABSENT = {p: "is absent." for p in ("og:title", "og:description", "og:image", "og:url")}
+ALL_PRESENT = {p: "is present." for p in OG_PROPS}
+ALL_ABSENT = {p: "is absent." for p in OG_PROPS}
+NO_LANG = (
+    "The page does not declare a language (no lang attribute on <html>); "
+    "WCAG 2 success criterion 3.1.1 (Language of Page, Level A) requires one."
+)
 
 EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]]] = {
     "dev-article": (
@@ -77,7 +96,7 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 A,
                 f"The page has a meta description of {len(DEV_DESCRIPTION)} characters.",
             ),
-            *og_rows(A, ALL_PRESENT, url_actor=P),
+            *og_rows(A, ALL_PRESENT, platform=P),
             (
                 "peri.og.url_matches_canonical",
                 "",
@@ -178,7 +197,7 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 A,
                 f"The page has a meta description of {len('This page declares no canonical URL.')} characters.",
             ),
-            *og_rows(A, ALL_PRESENT),
+            *og_rows(A, {**ALL_PRESENT, "og:type": "is absent."}, defects=frozenset({"og:type"})),
             (
                 "peri.og.url_matches_canonical",
                 "",
@@ -198,7 +217,7 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 f"The page's title is {len('A Post With No Canonical')} characters long.",
             ),
         ],
-        [],
+        [("peri.og.core.add-required", "peri.og.core")],
     ),
     "two-canonicals": (
         "https://blog.example.com/two-canonicals/",
@@ -314,10 +333,12 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 A,
                 {
                     "og:title": "is present.",
+                    "og:type": "is absent.",
                     "og:description": "is declared with name= rather than property=.",
                     "og:image": "is present but empty.",
                     "og:url": "is absent.",
                 },
+                defects=frozenset({"og:type", "og:image", "og:url"}),
             ),
             (
                 "peri.og.url_matches_canonical",
@@ -327,14 +348,7 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 A,
                 "There is no og:url to compare with the canonical URL.",
             ),
-            (
-                "peri.lang",
-                "",
-                OBS,
-                False,
-                A,
-                "The page does not declare a language (no lang attribute on <html>).",
-            ),
+            ("peri.lang", "", OBS, True, A, NO_LANG),
             ("peri.jsonld.parses", "", OBS, False, A, "The page has no JSON-LD blocks."),
             (
                 "peri.title",
@@ -345,7 +359,12 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 f"The page's title is {len('A Post With Only Some Open Graph Tags')} characters long.",
             ),
         ],
-        [],
+        [
+            ("peri.og.core.add-required", "peri.og.core"),
+            ("peri.og.core.add-required", "peri.og.core"),
+            ("peri.og.core.add-required", "peri.og.core"),
+            ("peri.lang.add-lang", "peri.lang"),
+        ],
     ),
     "broken-jsonld": (
         "https://blog.example.com/broken-jsonld/",
@@ -451,10 +470,12 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 A,
                 {
                     "og:title": "is present but has no content attribute.",
+                    "og:type": "is absent.",
                     "og:description": "is absent.",
                     "og:image": "is present.",
                     "og:url": "is absent.",
                 },
+                defects=frozenset({"og:title", "og:type", "og:url"}),
             ),
             (
                 "peri.og.url_matches_canonical",
@@ -484,6 +505,9 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
         ],
         [
             ("peri.canonical.absolute.add-href", "peri.canonical.absolute"),
+            ("peri.og.core.add-required", "peri.og.core"),
+            ("peri.og.core.add-required", "peri.og.core"),
+            ("peri.og.core.add-required", "peri.og.core"),
             ("peri.jsonld.parses.fix-json", "peri.jsonld.parses"),
         ],
     ),
@@ -509,11 +533,13 @@ for _name in ("volatile-a", "volatile-b"):
                 A,
                 {
                     "og:title": "is present.",
+                    "og:type": "is absent.",
                     "og:description": "is absent.",
                     "og:image": "is absent.",
                     "og:url": "is absent.",
                 },
-                url_actor=P,
+                platform=P,
+                defects=frozenset({"og:type", "og:image", "og:url"}),
             ),
             (
                 "peri.og.url_matches_canonical",
@@ -534,7 +560,7 @@ for _name in ("volatile-a", "volatile-b"):
                 f"The page's title is {len('A Synthetic Post With Volatile Tokens')} characters long.",
             ),
         ],
-        [],
+        [("peri.og.core.add-required", "peri.og.core")],
     )
 
 
@@ -591,21 +617,18 @@ def test_each_fixture_gives_exactly_the_expected_recommendations(name: str) -> N
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_only_the_tables_defect_conditions_set_defect(name: str) -> None:
-    """Defects come only from the four checks DESIGN.md section 4 gives a defect condition.
+    """Defects come only from the checks DESIGN.md section 4 gives a defect condition.
 
-    Those are canonical.single, canonical.absolute, og.url_matches_canonical,
-    and jsonld.parses; the others never set defect.
+    Those are canonical.single, canonical.absolute, og.core (a required
+    property missing on a page that uses Open Graph), og.url_matches_canonical,
+    lang, and jsonld.parses; the others never set defect, and og:description
+    never does.
     """
     findings, _ = run_checks(name)
 
-    never = {
-        "peri.canonical.present",
-        "peri.meta.description",
-        "peri.og.core",
-        "peri.lang",
-        "peri.title",
-    }
+    never = {"peri.canonical.present", "peri.meta.description", "peri.title"}
     assert not [f for f in findings if f.check_id in never and f.defect]
+    assert not [f for f in findings if f.target == "og:description" and f.defect]
 
 
 def test_every_finding_cites_the_page_receipt() -> None:
@@ -774,3 +797,125 @@ def test_a_redirect_makes_og_url_and_the_canonical_equivalent() -> None:
         False,
         "og:url and the canonical URL are equivalent (redirect, receipt r-001).",
     )
+
+
+# Defects from published standards (Session 4d)
+
+
+def _findings(body: bytes, check_id: str) -> tuple[list[Finding], list[Finding]]:
+    """Run the checks over a body and keep one check's findings and recommendations.
+
+    :param body: The page.
+    :param check_id: The check to keep.
+    :return: That check's findings, and the recommendations.
+    """
+    receipt = receipt_for(body, "https://a.example/p")
+    page = parse_page(receipt, body)
+    counter = itertools.count(1)
+
+    def new_id() -> str:
+        return f"f-{next(counter):03d}"
+
+    findings = peritext_findings(
+        page, receipt, subject_url="https://a.example/p", site=SiteType.WORDPRESS, new_id=new_id
+    )
+    advice = recommendations_for(findings, page=page, receipt=receipt, new_id=new_id)
+    return [f for f in findings if f.check_id == check_id], advice
+
+
+def test_an_empty_lang_is_a_defect_citing_wcag() -> None:
+    """An empty lang attribute declares no language (WCAG 2 SC 3.1.1)."""
+    (finding,), advice = _findings(
+        b'<html lang=" "><head><title>x</title></head></html>', "peri.lang"
+    )
+
+    assert finding.defect
+    assert "WCAG 2 success criterion 3.1.1 (Language of Page, Level A)" in finding.summary
+    (rec,) = [r for r in advice if r.check_id == "peri.lang"]
+    assert (
+        rec.summary
+        == 'Add a lang attribute to the <html> element declaring the page\'s language, such as lang="en".'
+    )
+    assert "WCAG 2 success criterion 3.1.1" in (rec.rationale or "")
+    assert "has an empty lang attribute" in (rec.rationale or "")
+
+
+def test_a_declared_lang_is_not_a_defect() -> None:
+    """Any non-blank value satisfies the check; its validity is not judged."""
+    (finding,), _ = _findings(b'<html lang="xx-nonsense"><head></head></html>', "peri.lang")
+
+    assert not finding.defect
+
+
+def test_a_page_without_open_graph_has_no_og_defects() -> None:
+    """Not using Open Graph at all is a fact, not a violation of it."""
+    findings, advice = _findings(
+        b"<html lang=en><head><title>x</title></head></html>", "peri.og.core"
+    )
+
+    assert [f.target for f in findings] == [
+        "og:title",
+        "og:type",
+        "og:description",
+        "og:image",
+        "og:url",
+    ]
+    assert not any(f.defect for f in findings)
+    assert not [r for r in advice if r.check_id == "peri.og.core"]
+
+
+def test_one_og_property_makes_the_required_ones_defects() -> None:
+    """A page that declares only og:description lacks all four required properties."""
+    body = b'<html lang=en><head><meta property="og:description" content="d"></head></html>'
+
+    findings, advice = _findings(body, "peri.og.core")
+
+    assert [f.target for f in findings if f.defect] == ["og:title", "og:type", "og:image", "og:url"]
+    recs = [r for r in advice if r.check_id == "peri.og.core"]
+    assert [r.target for r in recs] == [
+        f"peri.og.core.add-required:{p}" for p in ("og:title", "og:type", "og:image", "og:url")
+    ]
+    assert (
+        recs[1].summary
+        == 'Add og:type to the page\'s <head> as <meta property="og:type" content="...">, giving the page\'s type, such as article.'
+    )
+    assert "The Open Graph protocol (ogp.me) requires og:title, og:type, og:image, and og:url" in (
+        recs[0].rationale or ""
+    )
+
+
+def test_a_required_property_given_with_name_and_a_value_is_not_missing() -> None:
+    """name= with a value is reported as such, but most consumers read it, so it is no defect."""
+    body = (
+        b'<html><head><meta name="og:title" content="t"><meta property="og:type" content="article">'
+        b'<meta property="og:image" content="i"><meta property="og:url" content="https://a.example/p"></head></html>'
+    )
+
+    findings, _ = _findings(body, "peri.og.core")
+
+    (title,) = [f for f in findings if f.target == "og:title"]
+    assert (title.defect, title.summary) == (
+        False,
+        "og:title is declared with name= rather than property=.",
+    )
+    assert not any(f.defect for f in findings)
+
+
+def test_an_empty_required_property_is_missing() -> None:
+    """A required property with no value is a defect; the recommendation says it is empty."""
+    body = b'<html><head><meta property="og:title" content=""><meta property="og:type" content="a"></head></html>'
+
+    findings, advice = _findings(body, "peri.og.core")
+
+    (title,) = [f for f in findings if f.target == "og:title"]
+    assert title.defect
+    (rec,) = [r for r in advice if r.target == "peri.og.core.add-required:og:title"]
+    assert (rec.rationale or "").endswith("but og:title is empty.")
+
+
+def test_the_new_check_versions_are_two() -> None:
+    """Behavior changed, so the versions moved (CLAUDE.md: bump on any change)."""
+    findings, _ = _findings(b"<html></html>", "peri.lang")
+    og, _ = _findings(b"<html></html>", "peri.og.core")
+
+    assert {f.check_version for f in findings + og} == {"2"}

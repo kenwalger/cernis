@@ -26,7 +26,7 @@
     },
     {
       "id": "peri.og.core",
-      "version": "1"
+      "version": "2"
     },
     {
       "id": "peri.og.url_matches_canonical",
@@ -34,7 +34,7 @@
     },
     {
       "id": "peri.lang",
-      "version": "1"
+      "version": "2"
     },
     {
       "id": "peri.jsonld.parses",
@@ -51,9 +51,9 @@
     "https://blog.example.com/gone/"
   ],
   "counts": {
-    "observed": 24,
+    "observed": 26,
     "recommendations": 1,
-    "not_determinable": 12
+    "not_determinable": 13
   },
   "findings": [
     {
@@ -160,7 +160,7 @@
       "id": "f-005",
       "key": "f64c7b5771902720d9d8d00c1bb9ae8454156681284c1ad6e47abd249aba6e1a",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -183,9 +183,34 @@
     },
     {
       "id": "f-006",
+      "key": "30608ccba01e869c3f4cb1d3a464d4a82321457d1f851f88aba855d983a03f37",
+      "check_id": "peri.og.core",
+      "check_version": "2",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "og:type",
+      "summary": "og:type is present.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "head > meta[property=\"og:type\"] content",
+          "observed": "article",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-007",
       "key": "86c58835b691dd1dae42f5f56829c194e75fe6f00ba032fa896dd7a3d5b891d8",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -207,10 +232,10 @@
       "would_require": null
     },
     {
-      "id": "f-007",
+      "id": "f-008",
       "key": "2b584fe2822dcebcb048e88be943a152a5a69e9ea80784682a7e9d5045488192",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -232,10 +257,10 @@
       "would_require": null
     },
     {
-      "id": "f-008",
+      "id": "f-009",
       "key": "088e55796238fddf5aedb2028156a798251f9f7df52efc25deae0b44bbf6c52c",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "PLATFORM",
       "defect": false,
@@ -257,7 +282,7 @@
       "would_require": null
     },
     {
-      "id": "f-009",
+      "id": "f-010",
       "key": "a4a8799304807b1ea75dd32599fde923095526c83ff89907a446d890ab3d0a0a",
       "check_id": "peri.og.url_matches_canonical",
       "check_version": "1",
@@ -288,10 +313,10 @@
       "would_require": null
     },
     {
-      "id": "f-010",
+      "id": "f-011",
       "key": "0fc99cdf79f34a8933b04ff784b40e47ce81d10f468d364fef8df8e5cf4c27b0",
       "check_id": "peri.lang",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "PLATFORM",
       "defect": false,
@@ -313,7 +338,7 @@
       "would_require": null
     },
     {
-      "id": "f-011",
+      "id": "f-012",
       "key": "d61b22818676dd72e7e68a4c9b2e4b3946240753b8b4052e61c6a960add12ce5",
       "check_id": "peri.jsonld.parses",
       "check_version": "1",
@@ -338,7 +363,7 @@
       "would_require": null
     },
     {
-      "id": "f-012",
+      "id": "f-013",
       "key": "2b2d4b1ab098af614ddc07cb136e2dc7ce5a3b053e7b2f102f46c0767e38c131",
       "check_id": "peri.title",
       "check_version": "1",
@@ -363,7 +388,7 @@
       "would_require": null
     },
     {
-      "id": "f-013",
+      "id": "f-014",
       "key": "abc9bb7889deaae265ddd05c265f90ed784d784d8fc69882361bf490664206d5",
       "check_id": "peri.canonical.present",
       "check_version": "1",
@@ -394,7 +419,7 @@
       "would_require": null
     },
     {
-      "id": "f-014",
+      "id": "f-015",
       "key": "d3ac45f66392093694d31cee0edf923f3dfd7f74f07626191b887e6f0455b405",
       "check_id": "peri.canonical.single",
       "check_version": "1",
@@ -425,7 +450,7 @@
       "would_require": null
     },
     {
-      "id": "f-015",
+      "id": "f-016",
       "key": "e44151b9dba8415e42a70e8a19092ec82af71fd71b7f3a76910ff7aea41a8a9b",
       "check_id": "peri.canonical.absolute",
       "check_version": "1",
@@ -456,7 +481,7 @@
       "would_require": null
     },
     {
-      "id": "f-016",
+      "id": "f-017",
       "key": "cfe522049720b4ce8655bf18974355ff6723b83dfe6a0bcb93d2110f71efe26d",
       "check_id": "peri.meta.description",
       "check_version": "1",
@@ -481,10 +506,10 @@
       "would_require": null
     },
     {
-      "id": "f-017",
+      "id": "f-018",
       "key": "ee02a72d0f497794d3d5f44718a2e5d278e181a97a86621e30782b671ee68dd6",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -506,10 +531,35 @@
       "would_require": null
     },
     {
-      "id": "f-018",
+      "id": "f-019",
+      "key": "4593e1b5df04742da9248cc7fa32439a6f52629a57d3fb930bfbb882412c8321",
+      "check_id": "peri.og.core",
+      "check_version": "2",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "og:type",
+      "summary": "og:type is absent.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta property=\"og:type\">"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-020",
       "key": "731c18be2f578a4fc8d0ef8bba71c42cb0db8f1490f1ba24043d99d65b4c35da",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -531,10 +581,10 @@
       "would_require": null
     },
     {
-      "id": "f-019",
+      "id": "f-021",
       "key": "b49377f8e95321d2d18cffac2cf7a7c344fb2928faeb90273b60375d899e0e11",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -556,10 +606,10 @@
       "would_require": null
     },
     {
-      "id": "f-020",
+      "id": "f-022",
       "key": "4fc22dff506a32e2d4b120f0dab78e1f5c5fbf24ee079c8a1d7e62fa97e07035",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -581,7 +631,7 @@
       "would_require": null
     },
     {
-      "id": "f-021",
+      "id": "f-023",
       "key": "5faae59e276a03b3a5230e3bd0418e8db213acddce2748f729e128f0cbd87342",
       "check_id": "peri.og.url_matches_canonical",
       "check_version": "1",
@@ -606,10 +656,10 @@
       "would_require": null
     },
     {
-      "id": "f-022",
+      "id": "f-024",
       "key": "5eae259e4b5834c27de85eb28cac0acdf558bd2bca0b08015119415559ef316c",
       "check_id": "peri.lang",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -631,7 +681,7 @@
       "would_require": null
     },
     {
-      "id": "f-023",
+      "id": "f-025",
       "key": "99dde689f9edd9f622ffec6d2d608600e61d1c0270228913335fa345d88c10b2",
       "check_id": "peri.jsonld.parses",
       "check_version": "1",
@@ -656,7 +706,7 @@
       "would_require": null
     },
     {
-      "id": "f-024",
+      "id": "f-026",
       "key": "0f8751d2c89ca21a32f0279930a588627388c462229d6df5ed8235ee9f6e53f6",
       "check_id": "peri.title",
       "check_version": "1",
@@ -681,7 +731,7 @@
       "would_require": null
     },
     {
-      "id": "f-025",
+      "id": "f-027",
       "key": "7a9594f2b967fb9fe0b4a61c3ab5fbc396294728d41e12b65b0dfa0bad9d8fe8",
       "check_id": "peri.canonical.single",
       "check_version": "1",
@@ -694,14 +744,14 @@
       "evidence": [],
       "rationale": "The page declares 2 canonical links that name different URLs (https://blog.example.com/two-canonicals/, https://dev.to/example-author/two-canonicals-5e6f). RFC 6596 defines the canonical link relation as naming one preferred URL for a page; links that disagree leave that URL undeclared.",
       "based_on": [
-        "f-014"
+        "f-015"
       ],
       "reason_code": null,
       "question": null,
       "would_require": null
     },
     {
-      "id": "f-026",
+      "id": "f-028",
       "key": "011b16bfc2b8c890f3e2930d69ed0e9caba20222e3a9110ef81600479d4bb1b9",
       "check_id": "peri.canonical.present",
       "check_version": "1",
@@ -726,7 +776,7 @@
       "would_require": null
     },
     {
-      "id": "f-027",
+      "id": "f-029",
       "key": "d112f1d0290802ba60f7d05296f6ac094003f1905e1264fd9b4c06b0eb1b8bb0",
       "check_id": "peri.canonical.single",
       "check_version": "1",
@@ -751,7 +801,7 @@
       "would_require": null
     },
     {
-      "id": "f-028",
+      "id": "f-030",
       "key": "05e26d50ec15de6c0340a353c44ed763a4d5f23973873b20b6f1fbb396f1cbbb",
       "check_id": "peri.canonical.absolute",
       "check_version": "1",
@@ -776,7 +826,7 @@
       "would_require": null
     },
     {
-      "id": "f-029",
+      "id": "f-031",
       "key": "a0621e3aa331e0183a2dae421de3d0d3cfc85becaeef78689cbfb181dba75baf",
       "check_id": "peri.meta.description",
       "check_version": "1",
@@ -801,10 +851,10 @@
       "would_require": null
     },
     {
-      "id": "f-030",
+      "id": "f-032",
       "key": "c4c2c384068172b886c515f2ec527bb8a224bedfa8f485aa2209f3c337b1f0d8",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "NOT_DETERMINABLE",
       "actor": "UNKNOWN",
       "defect": false,
@@ -826,10 +876,35 @@
       "would_require": null
     },
     {
-      "id": "f-031",
+      "id": "f-033",
+      "key": "4e7ce0f72daf17d64cce817d04572f4d2a7336639dddb7318214ff66109f8398",
+      "check_id": "peri.og.core",
+      "check_version": "2",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "og:type",
+      "summary": "Whether the page declares og:type is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the page declares og:type",
+      "would_require": null
+    },
+    {
+      "id": "f-034",
       "key": "8bac78ca163b57bee1ffa0b8af82c00c39947e233ee75115438555eefe17e521",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "NOT_DETERMINABLE",
       "actor": "UNKNOWN",
       "defect": false,
@@ -851,10 +926,10 @@
       "would_require": null
     },
     {
-      "id": "f-032",
+      "id": "f-035",
       "key": "b4b64366c4119d1212ff54d8f4c76fe2f7ee600862e166c32f5f071548944958",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "NOT_DETERMINABLE",
       "actor": "UNKNOWN",
       "defect": false,
@@ -876,10 +951,10 @@
       "would_require": null
     },
     {
-      "id": "f-033",
+      "id": "f-036",
       "key": "03336828f20792a62de1494a8c545c8d437f7905d552ced728b29a0fefda7057",
       "check_id": "peri.og.core",
-      "check_version": "1",
+      "check_version": "2",
       "status": "NOT_DETERMINABLE",
       "actor": "UNKNOWN",
       "defect": false,
@@ -901,7 +976,7 @@
       "would_require": null
     },
     {
-      "id": "f-034",
+      "id": "f-037",
       "key": "7815a55aec84eca6a83fa0e4ae4878e46fdf569309bfadd86275719a72bb6624",
       "check_id": "peri.og.url_matches_canonical",
       "check_version": "1",
@@ -926,10 +1001,10 @@
       "would_require": null
     },
     {
-      "id": "f-035",
+      "id": "f-038",
       "key": "eb70fbdbe10f5d890c2eb6d1744dd3c4b1b35b558b8092cc974f70440e889d17",
       "check_id": "peri.lang",
-      "check_version": "1",
+      "check_version": "2",
       "status": "NOT_DETERMINABLE",
       "actor": "UNKNOWN",
       "defect": false,
@@ -951,7 +1026,7 @@
       "would_require": null
     },
     {
-      "id": "f-036",
+      "id": "f-039",
       "key": "3e969419f821f9af6efd91451c7166ca3861901965a105d154c6c142e7ed3626",
       "check_id": "peri.jsonld.parses",
       "check_version": "1",
@@ -976,7 +1051,7 @@
       "would_require": null
     },
     {
-      "id": "f-037",
+      "id": "f-040",
       "key": "d07d55799d381d61f1f190397294e1f4d9d385721fdb8c9ecdf40203ac3ca4b7",
       "check_id": "peri.title",
       "check_version": "1",
