@@ -41,57 +41,37 @@ hostile pattern full of ``*`` cannot make it backtrack.
 import re
 from dataclasses import dataclass
 
+from cernis.urls import normalize_percent_encoding
+
 MATCHER_VERSION = "1"
 """The matcher's version. Any change to how rules are matched bumps it."""
 
-_UNRESERVED = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-_RESERVED = frozenset(":/?#[]@!$&'()*+,;=")
-_HEX = frozenset("0123456789abcdefABCDEF")
 _LINE_END = re.compile(r"\r\n|\r|\n")
 _PRODUCT_TOKEN = re.compile(r"[A-Za-z_-]+")
 _WILDCARD = "\x00"
 """Stands for a pattern's ``*`` after normalization; it cannot occur in a path."""
 
 
-def _encode(character: str) -> str:
-    """Percent-encode one character as UTF-8, with uppercase hex.
-
-    :param character: The character.
-    :return: Its encoding.
-    """
-    return "".join(f"%{octet:02X}" for octet in character.encode("utf-8"))
+_PATTERN_LITERALS = {"*": _WILDCARD, "$": "%24"}
+_PATH_LITERALS = {"*": "%2A", "$": "%24"}
 
 
 def _normalize(text: str, *, pattern: bool) -> str:
     """Normalize a pattern or a path for comparison.
+
+    The percent-encoding rules are Cernis's one URL normalization
+    (:func:`cernis.urls.normalize_percent_encoding`); this adds only what
+    RFC 9309 makes special: a plain ``*`` in a pattern is a wildcard, and a
+    plain ``*`` in a path, or a ``$`` anywhere, is the literal character.
 
     :param text: The pattern, or the path and query as sent.
     :param pattern: Whether ``text`` is a pattern, in which a ``*`` is a
         wildcard. In a path, ``*`` and ``$`` are literal.
     :return: The normalized text; a pattern's wildcards are ``_WILDCARD``.
     """
-    out: list[str] = []
-    index = 0
-    while index < len(text):
-        character = text[index]
-        if character == "%":
-            digits = text[index + 1 : index + 3]
-            if len(digits) == 2 and set(digits) <= _HEX:
-                decoded = chr(int(digits, 16))
-                out.append(decoded if decoded in _UNRESERVED else f"%{digits.upper()}")
-                index += 3
-                continue
-            out.append("%25")
-        elif character == "*":
-            out.append(_WILDCARD if pattern else "%2A")
-        elif character == "$":
-            out.append("%24")
-        elif character in _UNRESERVED or character in _RESERVED:
-            out.append(character)
-        else:
-            out.append(_encode(character))
-        index += 1
-    return "".join(out)
+    return normalize_percent_encoding(
+        text, literal=_PATTERN_LITERALS if pattern else _PATH_LITERALS
+    )
 
 
 @dataclass(frozen=True, kw_only=True)

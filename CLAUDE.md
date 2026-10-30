@@ -19,7 +19,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Phase 2 (the fetcher) is built (session 3, 2026-10-29).** `src/cernis/fetch/`: robots.txt for Cernis's own user agent, per-host pacing, manual redirects, 429 and 503 retries, a body limit (ADR-003), a conditional-request cache, and one receipt per attempt (ADR-004); `cernis fetch`. Session 3b added the address screen (ADR-005), Cernis's own RFC 9309 matcher (`src/cernis/fetch/rfc9309.py`, replacing `urllib.robotparser`), the overall request deadline, and ADR-006 (429 on robots.txt). Runtime dependencies: httpx (below 0.29) and httpcore.
 
-**Next: Phase 3, the parser, snapshots, and peritext checks** (DESIGN.md section 10). Until a session prompt says otherwise, no HTML parsing, and no real network requests beyond what the prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**Phase 3, part one (foundations) is built (session 4a, 2026-10-30).** `src/cernis/parse/` (parser, extractors, snapshots, on selectolax), `src/cernis/urls.py` (the one URL normalization and `compare_urls`), and final finding keys, which must not change before Phase 5 without an ADR.
+
+**Next: Phase 3, part two: peritext checks, run assembly, and reports** (DESIGN.md section 10). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 

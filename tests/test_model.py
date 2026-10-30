@@ -2,6 +2,7 @@
 
 import copy
 import dataclasses
+import hashlib
 import pickle
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta, timezone
@@ -22,6 +23,7 @@ from cernis.model import (
     Receipt,
     Snapshot,
     Status,
+    finding_key,
 )
 
 EVIDENCE = Evidence(
@@ -302,6 +304,7 @@ def test_reason_codes_match_design() -> None:
         "ACCESS_DENIED",
         "RATE_LIMITED",
         "DISALLOWED_BY_ROBOTS",
+        "ADDRESS_REFUSED",
         "REQUIRES_RENDERING",
         "AMBIGUOUS",
     }
@@ -386,9 +389,68 @@ def test_target_must_be_empty_or_non_blank_text(target: object) -> None:
 
 
 def test_key_is_pinned_hash_of_check_url_and_target() -> None:
-    """The key encoding is fixed, so keys stay comparable across runs and releases."""
+    """The key computation is final (Session 4a); these values are pinned.
+
+    They must not change before Phase 5 without an ADR, because every stored
+    key would stop matching.
+
+    Session 4a changed the first value on purpose: the subject URL's trailing
+    slash is now normalized away, so the old placeholder key no longer applies.
+    """
     finding = observed(check_id="peri.og.core", target="og:image")
-    assert finding.key == "23d4acbda6ed68eb2f6ab1d193247378553c8d5e9b592ee8848c9852ca792986"
+    assert finding.key == "c23399e38d29eaa08d08525900de85a98fe5f334d1d15ec5bc0752309a5473f9"
+    link = observed(check_id="epi.links.resolve", target="https://Example.org/paper/#s2")
+    assert link.key == "a2c4b236490548ccd653dc8db27190623f70c2920b1d8a3fb34327e0823e9502"
+
+
+def test_key_payload_is_check_normalized_url_and_target() -> None:
+    """The key is the SHA-256 of a compact JSON array, spelled out here."""
+    payload = '["peri.og.core","https://example.com/post","og:image"]'
+    assert finding_key("peri.og.core", "https://example.com/post/", "og:image") == (
+        hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    )
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        ("https://example.com/post/", "https://EXAMPLE.com:443/post#top"),
+        ("https://b\u00fccher.de/caf\u00e9", "https://xn--bcher-kva.de/caf%C3%A9"),
+        ("https://example.com/cafe\u0301", "https://example.com/caf\u00e9"),
+    ],
+)
+def test_equivalent_subject_urls_share_a_key(a: str, b: str) -> None:
+    """Subject URLs go through the shared URL normalization."""
+    assert observed(subject_url=a).key == observed(subject_url=b).key
+
+
+def test_a_different_query_is_a_different_key() -> None:
+    """Query strings are compared exactly, in keys as in URL comparison."""
+    assert observed(subject_url="https://example.com/post?a=1").key != observed().key
+
+
+def test_url_targets_are_normalized() -> None:
+    """A target that is a URL goes through the same normalization as the subject."""
+    a = observed(check_id="epi.links.resolve", target="https://Example.org/paper/#s2")
+    b = observed(check_id="epi.links.resolve", target="https://example.org/paper")
+    assert a.key == b.key
+
+
+def test_other_targets_are_only_nfc_normalized() -> None:
+    """A vocabulary target is not treated as a URL, but is still NFC."""
+    assert finding_key("c", "https://example.com/", "og:image") != finding_key(
+        "c", "https://example.com/", "og:Image"
+    )
+    assert finding_key("c", "https://example.com/", "caf\u00e9") == finding_key(
+        "c", "https://example.com/", "cafe\u0301"
+    )
+
+
+def test_check_ids_are_nfc_normalized() -> None:
+    """Every string in the key is NFC, the check id included."""
+    assert finding_key("caf\u00e9", "https://example.com/", "") == finding_key(
+        "cafe\u0301", "https://example.com/", ""
+    )
 
 
 def test_key_ignores_version_status_and_run_fields() -> None:
@@ -421,10 +483,10 @@ def test_key_changes_with_check_url_or_target(change: dict[str, str]) -> None:
     assert observed(**change).key != observed().key
 
 
-def test_key_uses_normalized_subject_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two subject URLs that normalize the same share a key."""
-    monkeypatch.setattr(urls, "normalize_url", lambda url: url.rstrip("/"))
-    assert observed(subject_url="https://example.com/post").key == observed().key
+def test_key_uses_the_shared_url_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
+    """finding_key calls cernis.urls.normalize_url, not a copy of it."""
+    monkeypatch.setattr(urls, "normalize_url", lambda url: "same")
+    assert observed(subject_url="https://a.example/").key == observed(subject_url="x").key
 
 
 def test_key_cannot_be_passed_in() -> None:

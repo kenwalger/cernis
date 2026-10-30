@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>A Post With Broken JSON-LD</title>
+  <link rel="canonical" href="https://blog.example.com/broken-jsonld/">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Fine"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "Missing brace"</script>
+  <script type="APPLICATION/LD+JSON">[{"@type": ["Article", "NewsArticle"]}, {"@type": "Person"}]</script>
+  <script type="application/ld+json">   </script>
+  <script type="application/json">{"not": "json-ld"}</script>
+</head>
+<body>
+  <article><div class="entry-content"><p>Four JSON-LD blocks: one good, one broken, one array, one empty.</p></div></article>
+</body>
+</html>

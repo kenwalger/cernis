@@ -9,6 +9,7 @@ exist.
 import hashlib
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -47,6 +48,8 @@ class ReasonCode(StrEnum):
     RATE_LIMITED = "RATE_LIMITED"
     """429, still refused after retrying with backoff."""
     DISALLOWED_BY_ROBOTS = "DISALLOWED_BY_ROBOTS"
+    ADDRESS_REFUSED = "ADDRESS_REFUSED"
+    """The host resolves to a non-public address, so Cernis did not contact it (ADR-005)."""
     REQUIRES_RENDERING = "REQUIRES_RENDERING"
     AMBIGUOUS = "AMBIGUOUS"
 
@@ -124,21 +127,34 @@ def _require_sha256(owner: str, name: str, value: object) -> None:
 
 
 def finding_key(check_id: str, subject_url: str, target: str) -> str:
-    """Compute the key that identifies a finding across runs.
+    """Compute the key that identifies a finding across runs (DESIGN.md section 3).
 
-    The key is the SHA-256 of a JSON array of the check id, the normalized
-    subject URL, and the target. It leaves out ``check_version`` on purpose:
-    the same key with a different version is how history recognizes a
-    ``CHECKER`` change. The encoding is part of the history contract; changing
-    it makes every earlier key unmatchable.
+    The key is the SHA-256 of a compact JSON array (UTF-8, no ASCII escaping)
+    of the check id, the subject URL, and the target, each normalized first:
+
+    - every string is put in Unicode NFC;
+    - the subject URL goes through :func:`cernis.urls.normalize_url`;
+    - a target that is an absolute http(s) URL (a link, an image) goes
+      through the same normalization; any other target is an identifier from
+      Cernis's own vocabulary (``og:image``, a crawler name) and is only NFC.
+
+    It leaves out ``check_version`` on purpose: the same key with a different
+    version is how history recognizes a ``CHECKER`` change.
+
+    **The computation is final as of Session 4a.** Changing it, or the URL
+    normalization it uses, changes every key and makes stored history
+    unmatchable, so it must not change before Phase 5 without an ADR.
 
     :param check_id: The registered check id.
     :param subject_url: The article URL, before normalization.
     :param target: What specifically was checked, or an empty string.
     :return: The key, as 64 lowercase hex characters.
     """
+    target = unicodedata.normalize("NFC", target)
+    if urls.is_absolute_http_url(target):
+        target = urls.normalize_url(target)
     payload = json.dumps(
-        [check_id, urls.normalize_url(subject_url), target],
+        [unicodedata.normalize("NFC", check_id), urls.normalize_url(subject_url), target],
         ensure_ascii=False,
         separators=(",", ":"),
     )

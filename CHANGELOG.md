@@ -48,6 +48,18 @@ uses [Semantic Versioning](https://semver.org/).
 - A 429 robots.txt disallows everything, a deliberate departure from
   RFC 9309 (ADR-006).
 - httpcore is a declared dependency, and httpx is held below 0.29.
+- The parser (`cernis.parse`, Phase 3 part one), on selectolax: `parse_page`
+  reads titles, `html lang`, every canonical, every `meta` (including
+  `og:*`), every JSON-LD block (raw text and parse result), and body links,
+  and never raises on malformed HTML; article-body extractors `dev.article`,
+  `wordpress.entry`, and `generic`, each versioned; and `build_snapshot`,
+  with documented normalization and volatile-token handling.
+- `cernis.urls`: the one URL normalization (`normalize_url`,
+  `normalize_percent_encoding`, also used by the robots matcher) and
+  `compare_urls` (IDENTICAL, EQUIVALENT with the reason, or DIFFERENT).
+- Finding keys are final: NFC on every string, and URL targets normalized.
+- `ReasonCode.ADDRESS_REFUSED`.
+- selectolax and idna are declared dependencies.
 
 ## [0.0.1] - 2026-10-28
 

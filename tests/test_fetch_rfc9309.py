@@ -258,7 +258,7 @@ def test_wildcards_and_end_anchors(pattern: str, path: str, expected: bool) -> N
     ("pattern", "path"),
     [
         ("/foo/bar?baz=quz", "/foo/bar?baz=quz"),
-        ("/foo/bar/ツ", "/foo/bar/%E3%83%84"),
+        ("/foo/bar/\u30c4", "/foo/bar/%E3%83%84"),
         ("/foo/bar/%E3%83%84", "/foo/bar/%E3%83%84"),
         ("/foo/bar/%e3%83%84", "/foo/bar/%E3%83%84"),
         ("/foo/bar/%62%61%7A", "/foo/bar/baz"),
