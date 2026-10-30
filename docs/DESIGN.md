@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.3 (2026-10-29). Draft 2.3 adds the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.4 (2026-10-30). Draft 2.4 adds dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -160,7 +160,7 @@ Snapshot
   frame_sha256       the rest of the page, normalized (navigation, footer, template)
 ```
 
-Finding the article body needs a site-aware extractor (DEV's article container, WordPress's entry content). If the extractor finds no body, `content_sha256` is None, and any change involving that snapshot is `UNCLASSIFIED`.
+Finding the article body needs a site-aware extractor (DEV's article container, WordPress's entry content). The extractor is chosen by the URL's **declared site type** first (from the pair map file or a `--site-type` option), then by known hosts (dev.to); otherwise the generic extractor is used, which returns no body. Cernis does not guess a site type from page content. If the extractor finds no body, or finds more than one candidate, `content_sha256` is None, and any change involving that snapshot is `UNCLASSIFIED`. The snapshot records how its extractor was selected.
 
 ### URL comparison
 
@@ -169,7 +169,7 @@ Checks that compare URLs (`peri.og.url_matches_canonical`, `epi.pair.canonical`)
 | Outcome | When | Result |
 | --- | --- | --- |
 | `IDENTICAL` | The strings match exactly | No defect |
-| `EQUIVALENT` | They match after normalizing: scheme and host lowercased, default port removed, fragment removed, trailing slash on the path ignored, percent-encoding normalized; or one redirects to the other (recorded with the redirect receipt) | No defect; the difference is reported as a fact |
+| `EQUIVALENT` | They match after normalizing: scheme and host lowercased, default port removed, fragment removed, trailing slash on the path ignored, percent-encoding normalized, dot segments removed (`/a/../b` is `/b`, per RFC 3986, as every HTTP client sends it); or one redirects to the other (recorded with the redirect receipt) | No defect; the difference is reported as a fact, naming each normalization that mattered |
 | `DIFFERENT` | Anything else, including a different scheme (http versus https), a different host, a different path, or a different query string | Defect, where the check says so |
 
 Query strings are compared exactly. Cernis does not guess which parameters are "only tracking."
@@ -326,7 +326,7 @@ Cernis reads public pages of the author's own articles. It never touches comment
 ## 7. The CLI (sketch)
 
 ```text
-cernis audit <url> [<url> ...] [--format md|json]
+cernis audit <url> [<url> ...] [--site-type dev|wordpress] [--format md|json]
 cernis audit --from-sitemap <sitemap-url>
 cernis audit --from-dev-user <username>
 cernis pair --original <url> --copy <url>
