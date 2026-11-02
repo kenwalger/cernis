@@ -110,7 +110,7 @@ def _pair(original: str, copy: str) -> str:
             _pair(
                 '{ url = "https://a.example/", site = "medium" }', '{ url = "https://b.example/" }'
             ),
-            "site must be one of dev, wordpress",
+            "site must be one of dev, wordpress, owned",
         ),
         (
             _pair('{ url = "https://a.example/x/" }', '{ url = "https://A.example/x" }'),
@@ -208,8 +208,14 @@ def _site(body: str) -> str:
         (_site('prefix = "/blog/"\ntype = "dev"'), "prefix must be an absolute"),
         (_site('prefix = "https://a.example/?x=1"\ntype = "dev"'), "query or a fragment"),
         (_site('prefix = "https://a.example/#x"\ntype = "dev"'), "query or a fragment"),
-        (_site('prefix = "https://a.example/"'), "site 1, type: must be one of dev, wordpress"),
-        (_site('prefix = "https://a.example/"\ntype = "medium"'), "must be one of dev, wordpress"),
+        (
+            _site('prefix = "https://a.example/"'),
+            "site 1, type: must be one of dev, wordpress, owned",
+        ),
+        (
+            _site('prefix = "https://a.example/"\ntype = "medium"'),
+            "must be one of dev, wordpress, owned",
+        ),
         (
             _site('prefix = "https://a.example/blog/"\ntype = "dev"')
             + '[[site]]\nprefix = "https://A.example/blog"\ntype = "wordpress"\n',
@@ -231,3 +237,28 @@ def test_one_prefix_given_the_same_type_twice_is_fine() -> None:
     )
 
     assert len(parse_pair_map(text).sites) == 2
+
+
+# The owned site type (Session 5a)
+
+
+def test_owned_is_a_site_type_in_pairs_and_prefix_rules() -> None:
+    """An owned page can be declared on a pair URL or by a prefix rule."""
+    text = """
+format = 1
+
+[[site]]
+prefix = "https://notes.example/"
+type = "owned"
+
+[[pair]]
+original = { url = "https://notes.example/post/" }
+copy = { url = "https://mirror.example/post/", site = "owned" }
+"""
+
+    parsed = parse_pair_map(text)
+
+    assert [(rule.prefix, rule.site) for rule in parsed.sites] == [
+        ("https://notes.example/", SiteType.OWNED)
+    ]
+    assert parsed.site_types() == {"https://mirror.example/post": SiteType.OWNED}

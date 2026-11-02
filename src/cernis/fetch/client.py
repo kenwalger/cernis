@@ -511,6 +511,8 @@ class Fetcher:
             trust_env=False,
         )
         self._next_id = 1
+        # The URL whose fetch must not touch the cache (store_body=False), if any.
+        self._no_store_url: str | None = None
         self._robots: dict[str, tuple[RobotsPolicy, tuple[Receipt, ...]]] = {}
 
     def __enter__(self) -> Self:
@@ -538,11 +540,15 @@ class Fetcher:
         """Close the underlying HTTP client."""
         self._client.close()
 
-    def fetch(self, url: str) -> FetchResult:
+    def fetch(self, url: str, *, store_body: bool = True) -> FetchResult:
         """Fetch ``url``, checking robots.txt first.
 
         :param url: An absolute http or https URL with no user information.
             It is requested and recorded in the normalized form httpx sends.
+        :param store_body: ``False`` to keep only the receipts: the cache is
+            neither read nor written for the URL, and the result has no body.
+            For resources Cernis only checks the status of, such as an
+            ``og:image``, which it must never store.
         :return: What the fetch did, with a receipt per attempt.
         :raises FetchError: If the URL cannot be fetched at all.
         """
@@ -551,7 +557,13 @@ class Fetcher:
             raise FetchError(problem)
         url = str(httpx.URL(url))
         decisions: list[RobotsDecision] = []
-        receipts, body, disallowed = self._attempts(url, decisions)
+        self._no_store_url = None if store_body else url
+        try:
+            receipts, body, disallowed = self._attempts(url, decisions)
+        finally:
+            self._no_store_url = None
+        if not store_body:
+            body = None
         robots_receipts: list[Receipt] = []
         for robots_url in dict.fromkeys(decision.robots_url for decision in decisions):
             robots_receipts.extend(self._robots[robots_url][1])
@@ -746,7 +758,8 @@ class Fetcher:
         :return: The response, or why there was none.
         """
         self._pacer.wait((httpx.URL(url).host or "").lower())
-        cached = self._cache.lookup(url) if self._cache is not None else None
+        cache = self._cache if self._no_store_url is None else None
+        cached = cache.lookup(url) if cache is not None else None
         conditional: dict[str, str] = {}
         if cached is not None:
             if cached.etag is not None:
@@ -817,12 +830,13 @@ class Fetcher:
                 headers=headers,
                 locations=response.extensions.get(_LOCATIONS, ()),
             )
+        cache = self._cache if self._no_store_url is None else None
         if status == 304:
-            if cached is None or self._cache is None:
+            if cached is None or cache is None:
                 return _Exchange(
                     sent_at=sent_at, status=status, error=ErrorKind.NONE, headers=headers
                 )
-            self._cache.refresh(
+            cache.refresh(
                 cached,
                 etag=response.headers.get("etag"),
                 last_modified=response.headers.get("last-modified"),
@@ -849,11 +863,11 @@ class Fetcher:
                 break
             self._check_deadline(started)
         body = bytes(buffer)
-        if status == 200 and self._cache is not None:
+        if status == 200 and cache is not None:
             if truncated:
-                self._cache.drop(url)
+                cache.drop(url)
             else:
-                self._cache.store(
+                cache.store(
                     url,
                     etag=response.headers.get("etag"),
                     last_modified=response.headers.get("last-modified"),

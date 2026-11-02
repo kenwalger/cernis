@@ -4,16 +4,17 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from cernis import REPOSITORY_URL, __version__
-from cernis.audit import Target, audit
+from cernis.audit import PairTarget, Target, audit
 from cernis.checks.registry import CHECKS, CheckSpec
 from cernis.fetch import FetchConfig, Fetcher, FetchError, FetchResult, RobotsDecision
 from cernis.fetch.cache import DEFAULT_CACHE_DIR
 from cernis.model import Receipt
-from cernis.pairs import PairMapError, load_pair_map
+from cernis.pairs import PairMap, PairMapError, load_pair_map
 from cernis.parse import SitePrefix, SiteType
 from cernis.report import report_json, report_markdown
 from cernis.report.json_report import receipt_as_dict
@@ -28,6 +29,30 @@ STATUS_MESSAGE = (
     "Run `cernis audit <url>` to audit a page, or `cernis checks` to see the checks. "
     f"Follow along at {REPOSITORY_URL}."
 )
+
+
+def _add_run_options(parser: argparse.ArgumentParser) -> None:
+    """Add the report and fetch options every auditing command shares.
+
+    :param parser: The subcommand's parser.
+    """
+    parser.add_argument(
+        "--format", choices=("md", "json"), default="md", help="report format (default: md)"
+    )
+    parser.add_argument(
+        "--output", type=Path, help="write the report to this file instead of standard output"
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=DEFAULT_CACHE_DIR,
+        help=f"cache directory for conditional requests (default: {DEFAULT_CACHE_DIR})",
+    )
+    parser.add_argument(
+        "--allow-loopback",
+        action="store_true",
+        help="allow loopback addresses, for testing against a local server",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -103,6 +128,40 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="allow loopback addresses, for testing against a local server",
     )
+    pair_parser = commands.add_parser(
+        "pair",
+        help="audit an original and its copy, then check the copy names the original",
+        description=(
+            "Audit both pages (every peritext check), check each page's canonical and "
+            "og:image, then run the pair check: the copy's canonical against the original, "
+            "and the original's against itself."
+        ),
+    )
+    pair_parser.add_argument("--original", required=True, metavar="URL", help="the original")
+    pair_parser.add_argument("--copy", required=True, metavar="URL", help="the copy")
+    site_choices = [site.value for site in SiteType]
+    pair_parser.add_argument(
+        "--original-site", choices=site_choices, help="declare the original's site type"
+    )
+    pair_parser.add_argument(
+        "--copy-site", choices=site_choices, help="declare the copy's site type"
+    )
+    pair_parser.add_argument(
+        "--map",
+        type=Path,
+        metavar="FILE",
+        help="a pair map whose site types and [[site]] prefix rules apply",
+    )
+    pairs_parser = commands.add_parser(
+        "pairs",
+        help="audit every [[pair]] in a pair map in one run",
+        description="Audit every original and copy listed in a pair map (docs/PAIR-MAP.md).",
+    )
+    pairs_parser.add_argument(
+        "--map", type=Path, metavar="FILE", required=True, help="the pair map"
+    )
+    for sub in (pair_parser, pairs_parser):
+        _add_run_options(sub)
     fetch = commands.add_parser(
         "fetch",
         help="fetch one URL politely and print its receipts, for manual checking",
@@ -278,6 +337,88 @@ def run_fetch(url: str, cache_dir: Path, output_format: str, allow_loopback: boo
     return 0
 
 
+@dataclass(frozen=True, kw_only=True)
+class RunOptions:
+    """Report and fetch options shared by ``audit``, ``pair``, and ``pairs``.
+
+    :param command: The command name, for messages.
+    :param output_format: ``md`` or ``json``.
+    :param output: The file to write, or ``None`` for standard output.
+    :param cache_dir: The cache directory.
+    :param allow_loopback: Whether loopback addresses are allowed.
+    """
+
+    command: str
+    output_format: str
+    output: Path | None
+    cache_dir: Path
+    allow_loopback: bool = False
+
+
+def _load_map(pair_map: Path | None, command: str) -> PairMap | None:
+    """Load a pair map, printing the problem if it cannot be loaded.
+
+    :param pair_map: The file, or ``None``.
+    :param command: The command name, for the message.
+    :return: The map, an empty map when none was given, or ``None`` if it
+        failed to load.
+    """
+    if pair_map is None:
+        return PairMap(pairs=())
+    try:
+        return load_pair_map(pair_map)
+    except PairMapError as exc:
+        print(f"cernis {command}: {exc}", file=sys.stderr)
+        return None
+
+
+def _site_for(url: str, declared: SiteType | None, pair_map: PairMap) -> SiteType | None:
+    """Return a URL's declared site type: the command line's, else its own in the map.
+
+    :param url: The URL.
+    :param declared: The site type given on the command line, if any.
+    :param pair_map: The pair map.
+    :return: The site type, or ``None`` to use prefix rules and the host.
+    """
+    return declared or pair_map.site_types().get(normalize_url(url))
+
+
+def _run_and_write(
+    options: RunOptions,
+    targets: Sequence[Target],
+    pairs: Sequence[PairTarget],
+    prefixes: Sequence[SitePrefix],
+) -> int:
+    """Run an audit and write its report.
+
+    :param options: The shared options.
+    :param targets: Single pages.
+    :param pairs: Original and copy pairs.
+    :param prefixes: Prefix rules.
+    :return: The exit code: 0 when the audit ran (whatever it found), 2 when a
+        page URL cannot be fetched at all or the report cannot be written.
+    """
+    config = FetchConfig(cache_dir=options.cache_dir, allow_loopback=options.allow_loopback)
+    try:
+        with Fetcher(config) as fetcher:
+            run = audit(
+                targets, fetcher, now=lambda: datetime.now(UTC), prefixes=prefixes, pairs=pairs
+            )
+    except FetchError as exc:
+        print(f"cernis {options.command}: {exc}", file=sys.stderr)
+        return 2
+    text = report_json(run) if options.output_format == "json" else report_markdown(run)
+    if options.output is None:
+        sys.stdout.write(text)
+        return 0
+    try:
+        options.output.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"cernis {options.command}: cannot write {options.output}: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def run_audit(
     urls: Sequence[str],
     site_type: str | None,
@@ -300,34 +441,85 @@ def run_audit(
         URL cannot be fetched at all, the pair map cannot be read, or the
         report cannot be written.
     """
+    options = RunOptions(
+        command="audit",
+        output_format=output_format,
+        output=output,
+        cache_dir=cache_dir,
+        allow_loopback=allow_loopback,
+    )
+    loaded = _load_map(pair_map, "audit")
+    if loaded is None:
+        return 2
     site = SiteType(site_type) if site_type is not None else None
-    declared: dict[str, SiteType] = {}
-    prefixes: tuple[SitePrefix, ...] = ()
-    if pair_map is not None:
-        try:
-            loaded = load_pair_map(pair_map)
-        except PairMapError as exc:
-            print(f"cernis audit: {exc}", file=sys.stderr)
-            return 2
-        declared, prefixes = loaded.site_types(), loaded.sites
-    targets = [Target(url=url, site=site or declared.get(normalize_url(url))) for url in urls]
-    config = FetchConfig(cache_dir=cache_dir, allow_loopback=allow_loopback)
-    try:
-        with Fetcher(config) as fetcher:
-            run = audit(targets, fetcher, now=lambda: datetime.now(UTC), prefixes=prefixes)
-    except FetchError as exc:
-        print(f"cernis audit: {exc}", file=sys.stderr)
+    targets = [Target(url=url, site=_site_for(url, site, loaded)) for url in urls]
+    return _run_and_write(options, targets, (), loaded.sites)
+
+
+def run_pair(
+    original: str,
+    copy: str,
+    original_site: str | None,
+    copy_site: str | None,
+    pair_map: Path | None,
+    options: RunOptions,
+) -> int:
+    """Audit one original and copy, and write the report.
+
+    :param original: The original's URL.
+    :param copy: The copy's URL.
+    :param original_site: The original's declared site type, or ``None``.
+    :param copy_site: The copy's declared site type, or ``None``.
+    :param pair_map: A pair map whose site types and prefixes apply, or ``None``.
+    :param options: The shared options.
+    :return: The exit code, as for ``audit``; also 2 when the copy is the
+        original.
+    """
+    loaded = _load_map(pair_map, "pair")
+    if loaded is None:
         return 2
-    text = report_json(run) if output_format == "json" else report_markdown(run)
-    if output is None:
-        sys.stdout.write(text)
-        return 0
-    try:
-        output.write_text(text, encoding="utf-8")
-    except OSError as exc:
-        print(f"cernis audit: cannot write {output}: {exc}", file=sys.stderr)
+    if normalize_url(original) == normalize_url(copy):
+        print("cernis pair: the copy is the same URL as the original", file=sys.stderr)
         return 2
-    return 0
+    pair = PairTarget(
+        original=Target(
+            url=original,
+            site=_site_for(original, SiteType(original_site) if original_site else None, loaded),
+        ),
+        copy=Target(
+            url=copy, site=_site_for(copy, SiteType(copy_site) if copy_site else None, loaded)
+        ),
+    )
+    return _run_and_write(options, (), (pair,), loaded.sites)
+
+
+def run_pairs(pair_map: Path, options: RunOptions) -> int:
+    """Audit every pair in a pair map in one run, and write the report.
+
+    :param pair_map: The pair map.
+    :param options: The shared options.
+    :return: The exit code, as for ``audit``; also 2 when the map has no pairs.
+    """
+    loaded = _load_map(pair_map, "pairs")
+    if loaded is None:
+        return 2
+    if not loaded.pairs:
+        print(f"cernis pairs: {pair_map} has no [[pair]]", file=sys.stderr)
+        return 2
+    declared = loaded.site_types()
+    pairs = [
+        PairTarget(
+            original=Target(
+                url=p.original.url,
+                site=p.original.site or declared.get(normalize_url(p.original.url)),
+            ),
+            copy=Target(
+                url=p.copy.url, site=p.copy.site or declared.get(normalize_url(p.copy.url))
+            ),
+        )
+        for p in loaded.pairs
+    ]
+    return _run_and_write(options, (), pairs, loaded.sites)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -354,6 +546,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.allow_loopback,
             args.map,
         )
+    if args.command in ("pair", "pairs"):
+        options = RunOptions(
+            command=args.command,
+            output_format=args.format,
+            output=args.output,
+            cache_dir=args.cache_dir,
+            allow_loopback=args.allow_loopback,
+        )
+        if args.command == "pair":
+            return run_pair(
+                args.original, args.copy, args.original_site, args.copy_site, args.map, options
+            )
+        return run_pairs(args.map, options)
     if args.command == "fetch":
         return run_fetch(args.url, args.cache_dir, args.format, args.allow_loopback)
     print(STATUS_MESSAGE)

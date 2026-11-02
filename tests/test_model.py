@@ -24,6 +24,7 @@ from cernis.model import (
     Receipt,
     Run,
     RunError,
+    RunPair,
     Snapshot,
     Status,
     finding_key,
@@ -978,3 +979,54 @@ def test_a_run_needs_a_subject() -> None:
     """A run audits at least one URL."""
     with pytest.raises(RunError, match="subjects"):
         run(subjects=(), findings=())
+
+
+# Run pairs (Session 5a)
+
+OTHER = "https://other.example/post"
+
+
+def two_subject_run(**overrides: object) -> Run:
+    """Build a valid run with a second subject, so it can hold a pair.
+
+    :param **overrides: Run fields to replace.
+    :return: The run.
+    """
+    fields: dict[str, Any] = {"subjects": ("https://example.com/post", OTHER)}
+    fields.update(overrides)
+    return run(**fields)
+
+
+def test_a_pair_of_two_subjects_is_valid() -> None:
+    """The original and the copy are both subjects."""
+    built = two_subject_run(pairs=(RunPair(original=OTHER, copy="https://example.com/post"),))
+    assert built.pairs[0].original == OTHER
+
+
+@pytest.mark.parametrize(
+    ("pairs", "message"),
+    [
+        ((RunPair(original="https://nowhere.example/", copy=OTHER),), "not a subject"),
+        ((RunPair(original=OTHER, copy=OTHER),), "its own original"),
+        (
+            (
+                RunPair(original=OTHER, copy="https://example.com/post"),
+                RunPair(original=OTHER, copy="https://example.com/post"),
+            ),
+            "repeated",
+        ),
+        ((("a", "b"),), "tuple of RunPair"),
+    ],
+)
+def test_pair_rules_are_enforced(pairs: object, message: str) -> None:
+    """Each pair names two different subjects, once."""
+    with pytest.raises(RunError, match=message):
+        two_subject_run(pairs=pairs)
+
+
+@pytest.mark.parametrize("field", ["original", "copy"])
+def test_a_run_pair_needs_both_urls(field: str) -> None:
+    """An empty URL is not a pair."""
+    values = {"original": OTHER, "copy": "https://example.com/post", field: ""}
+    with pytest.raises(RunError, match=f"{field} must be a non-empty"):
+        RunPair(**values)

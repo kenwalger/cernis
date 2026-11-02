@@ -17,6 +17,9 @@ from cernis.checks.recommend import recommendations_for
 from cernis.model import Actor, Finding, Status
 from cernis.parse import SiteType, effective_site, parse_page
 
+OG_URL_STANDARD = "; the Open Graph protocol (ogp.me) defines og:url as the object's canonical URL."
+"""What a DIFFERENT og:url defect ends with (version 2, Session 5a)."""
+
 A, P = Actor.AUTHOR, Actor.PLATFORM
 OBS, ND = Status.OBSERVED, Status.NOT_DETERMINABLE
 VOLATILE_URL = "https://dev.to/example-author/volatile-tokens-7g8h"
@@ -103,7 +106,8 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 OBS,
                 True,
                 P,
-                f"og:url ({DEV_URL}) and the canonical URL ({WP_CANONICAL}) are different.",
+                f"og:url ({DEV_URL}) and the canonical URL ({WP_CANONICAL}) are different"
+                f"{OG_URL_STANDARD}",
             ),
             ("peri.lang", "", OBS, False, P, "The page declares its language as 'en'."),
             (
@@ -719,7 +723,8 @@ def test_without_a_known_site_every_actor_is_unknown() -> None:
             "https://a.example/p/",
             OBS,
             True,
-            "og:url (https://a.example/p/) and the canonical URL (https://a.example/p/?ref=x) are different.",
+            "og:url (https://a.example/p/) and the canonical URL (https://a.example/p/?ref=x) "
+            "are different" + OG_URL_STANDARD,
         ),
     ],
 )

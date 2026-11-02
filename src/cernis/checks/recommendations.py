@@ -129,6 +129,52 @@ TEMPLATES: tuple[RecommendationTemplate, ...] = (
             "points at {copy_canonical}, which contradicts that pairing."
         ),
     ),
+    RecommendationTemplate(
+        id="epi.pair.canonical.set-dev-canonical-url",
+        check_id="epi.pair.canonical",
+        action="Set canonical_url in the copy's DEV front matter to {original_url}.",
+        rationale=(
+            "You declared {original_url} as the original; the copy's canonical "
+            "{copy_state}, which contradicts that pairing. On DEV, the copy's canonical "
+            "link comes from canonical_url in its front matter."
+        ),
+    ),
+    RecommendationTemplate(
+        id="epi.pair.canonical.add-copy-canonical",
+        check_id="epi.pair.canonical",
+        action="Add a canonical link to the copy naming the original, {original_url}.",
+        rationale=(
+            "You declared {original_url} as the original, and the copy declares no "
+            "canonical URL, so nothing on the copy names its original (RFC 6596)."
+        ),
+    ),
+    RecommendationTemplate(
+        id="epi.pair.canonical.set-original-canonical",
+        check_id="epi.pair.canonical",
+        action="Set the original's canonical URL to its own URL, {original_url}.",
+        rationale=(
+            "You declared {original_url} as the original, and its canonical names "
+            "{original_canonical}, a different URL, which contradicts that pairing."
+        ),
+    ),
+    RecommendationTemplate(
+        id="epi.canonical.resolves.fix-canonical",
+        check_id="epi.canonical.resolves",
+        action="Change the canonical URL {url} to the URL of a page that exists.",
+        rationale=(
+            "A canonical URL names the preferred URL for the page (RFC 6596), and {url} "
+            "answers {status}, so it names no page."
+        ),
+    ),
+    RecommendationTemplate(
+        id="epi.og.image.resolves.fix-image",
+        check_id="epi.og.image.resolves",
+        action="Set og:image to the URL of an image that exists.",
+        rationale=(
+            "The Open Graph protocol defines og:image as an image URL representing the "
+            "object, and {url} {problem}."
+        ),
+    ),
 )
 """Every recommendation template in the package."""
 

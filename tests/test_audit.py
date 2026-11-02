@@ -67,6 +67,9 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
     """Receipts, a snapshot, observed findings, and recommendations in one valid run."""
     site = Site()
     site.add(PAGE, respond(200, fixture("two-canonicals"), HTML))
+    site.add(
+        "https://dev.to/example-author/two-canonicals-5e6f", respond(200, b"<html></html>", HTML)
+    )
 
     run = audit(
         [Target(url=PAGE, site=SiteType.WORDPRESS)],
@@ -77,7 +80,14 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
     assert run.id == "20261030T120000Z"
     assert run.finished_at > run.started_at
     assert run.subjects == (PAGE,)
-    assert [r.requested_url for r in run.receipts] == ["https://blog.example.com/robots.txt", PAGE]
+    # The page, then its second canonical (its first is the page itself, so
+    # its fetch is reused).
+    assert [r.requested_url for r in run.receipts] == [
+        "https://blog.example.com/robots.txt",
+        PAGE,
+        "https://dev.to/robots.txt",
+        "https://dev.to/example-author/two-canonicals-5e6f",
+    ]
     (snapshot,) = run.snapshots
     assert (snapshot.receipt_id, snapshot.extractor_id, snapshot.extractor_selection) == (
         "r-002",
@@ -85,9 +95,9 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
         ExtractorSelection.DECLARED,
     )
     statuses = [f.status for f in run.findings]
-    assert statuses.count(Status.OBSERVED) == 13
+    assert statuses.count(Status.OBSERVED) == 15
     assert statuses.count(Status.RECOMMENDATION) == 1
-    assert [f.id for f in run.findings] == [f"f-{n:03d}" for n in range(1, 15)]
+    assert [f.id for f in run.findings] == [f"f-{n:03d}" for n in range(1, 17)]
     (advice,) = [f for f in run.findings if f.status is Status.RECOMMENDATION]
     (based,) = advice.based_on
     assert next(f for f in run.findings if f.id == based).check_id == "peri.canonical.single"

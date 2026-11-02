@@ -23,7 +23,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Phase 3 is built (session 4b, 2026-10-30).** The nine peritext checks, fetch outcomes as `NOT_DETERMINABLE` findings, recommendations, a self-validating `Run`, JSON and Markdown reports, `cernis audit`, and the pair map format (`docs/PAIR-MAP.md`). Golden report files are in `tests/golden/`; regenerate them only with `CERNIS_UPDATE_GOLDEN=1`, and read the diff. Session 4d finished Phase 3: path-prefix site types (`[[site]]`, `cernis audit --map`) and standards defects in `peri.lang` and `peri.og.core` (both at version 2).
 
-**Next: Phase 4, epitext checks** (DESIGN.md section 10), including the flagship pair check and `cernis pairs --map`. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**Phase 4, part one (the pair check) is built (session 5a, 2026-11-02).** `src/cernis/checks/epitext.py`: `epi.pair.canonical`, `epi.canonical.resolves`, and `epi.og.image.resolves`; the `owned` site type; `cernis pair` and `cernis pairs --map`; one fetch per distinct URL per run (`RunFetches` in `src/cernis/audit.py`); `Run.pairs`. DESIGN.md is at draft 2.5.
+
+**Next: the rest of Phase 4** (DESIGN.md section 10): `epi.robots.access`, `epi.sitemap.listed`, `epi.links.resolve`, and the URL sources (sitemap, DEV username). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 

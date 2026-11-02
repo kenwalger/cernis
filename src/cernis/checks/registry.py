@@ -41,15 +41,16 @@ def _peri(id: str, description: str, version: str = "1") -> CheckSpec:
     )
 
 
-def _epi(id: str, description: str) -> CheckSpec:
-    """Register a planned epitext check at version 1.
+def _epi(id: str, description: str, implemented: bool = False) -> CheckSpec:
+    """Register an epitext check at version 1.
 
     :param id: The check id.
     :param description: The one-line description.
+    :param implemented: Whether it can run yet (Session 5a implements three).
     :return: The check spec.
     """
     return CheckSpec(
-        id=id, version="1", family=Family.EPITEXT, description=description, implemented=False
+        id=id, version="1", family=Family.EPITEXT, description=description, implemented=implemented
     )
 
 
@@ -65,7 +66,8 @@ CHECKS: tuple[CheckSpec, ...] = (
         "og:title, og:type, og:description, og:image, and og:url are present.",
         version="2",
     ),
-    _peri("peri.og.url_matches_canonical", "og:url agrees with the canonical URL."),
+    # Version 2 (Session 5a): a DIFFERENT defect cites the Open Graph protocol.
+    _peri("peri.og.url_matches_canonical", "og:url agrees with the canonical URL.", version="2"),
     # Version 2 (Session 4d): a missing or empty lang is a defect (WCAG 2 SC 3.1.1).
     _peri("peri.lang", "The <html> element sets a lang attribute.", version="2"),
     _peri("peri.jsonld.parses", "JSON-LD blocks parse as JSON; their @type is reported."),
@@ -73,9 +75,18 @@ CHECKS: tuple[CheckSpec, ...] = (
     _epi(
         "epi.pair.canonical",
         "A copy's canonical points at its original; the original's, at itself.",
+        implemented=True,
     ),
-    _epi("epi.canonical.resolves", "The canonical URL returns 200 without a redirect chain."),
-    _epi("epi.og.image.resolves", "The og:image URL returns an image."),
+    _epi(
+        "epi.canonical.resolves",
+        "Each canonical URL's status and redirect chain; a defect only for 404 or 410.",
+        implemented=True,
+    ),
+    _epi(
+        "epi.og.image.resolves",
+        "The og:image URL's status and content type; a defect for 404, 410, or not an image.",
+        implemented=True,
+    ),
     _epi("epi.robots.access", "What robots.txt allows for this URL, for general and AI crawlers."),
     _epi("epi.sitemap.listed", "The URL appears in the site's sitemap."),
     _epi("epi.links.resolve", "Links in the article body resolve."),

@@ -175,3 +175,134 @@ def recommendations_for(
                 )
             )
     return advice
+
+
+def _evidence_value(finding: Finding, location: str) -> str | None:
+    """Return the observed value at one location in a finding's evidence.
+
+    :param finding: The finding.
+    :param location: The evidence location.
+    :return: The first observed value there, or ``None``.
+    """
+    return next((e.observed for e in finding.evidence if e.location == location), None)
+
+
+def resource_recommendations(findings: list[Finding], *, new_id: NewId) -> list[Finding]:
+    """Recommend a change for each canonical or og:image defect the author can act on.
+
+    :param findings: Observed ``epi.canonical.resolves`` and
+        ``epi.og.image.resolves`` findings.
+    :param new_id: The run's finding id source.
+    :return: The recommendations.
+    """
+    advice: list[Finding] = []
+    for finding in findings:
+        if not (
+            finding.status is Status.OBSERVED and finding.defect and finding.actor in _ACTIONABLE
+        ):
+            continue
+        status = _evidence_value(finding, "HTTP status") or ""
+        if finding.check_id == "epi.canonical.resolves":
+            advice.append(
+                _recommend(
+                    "epi.canonical.resolves.fix-canonical",
+                    finding,
+                    finding.target,
+                    new_id,
+                    url=finding.target,
+                    status=status,
+                )
+            )
+        elif finding.check_id == "epi.og.image.resolves":
+            content_type = _evidence_value(finding, "Content-Type")
+            if status in ("404", "410"):
+                problem = f"answers {status}"
+            else:
+                media = (content_type or "").split(";", 1)[0].strip()
+                declared = f"Content-Type {media}" if media else "no Content-Type"
+                problem = f"answers {status} with {declared}, not an image"
+            advice.append(
+                _recommend(
+                    "epi.og.image.resolves.fix-image",
+                    finding,
+                    finding.target,
+                    new_id,
+                    url=finding.target,
+                    problem=problem,
+                )
+            )
+    return advice
+
+
+def pair_recommendations(
+    findings: list[Finding],
+    *,
+    original_url: str,
+    copy_canonical: str | None,
+    original_canonical: str | None,
+    copy_on_dev: bool,
+    new_id: NewId,
+) -> list[Finding]:
+    """Recommend a change for each ``epi.pair.canonical`` defect.
+
+    :param findings: The pair's findings.
+    :param original_url: The declared original's URL.
+    :param copy_canonical: The copy's canonical URL, or ``None`` if it has none.
+    :param original_canonical: The original's canonical URL, or ``None``.
+    :param copy_on_dev: Whether the copy is on DEV, whose front matter sets
+        the canonical.
+    :param new_id: The run's finding id source.
+    :return: The recommendations.
+    """
+    advice: list[Finding] = []
+    for finding in findings:
+        if not (
+            finding.status is Status.OBSERVED and finding.defect and finding.actor in _ACTIONABLE
+        ):
+            continue
+        if finding.target == "copy":
+            if copy_on_dev:
+                state = f"names {copy_canonical}" if copy_canonical else "is missing"
+                advice.append(
+                    _recommend(
+                        "epi.pair.canonical.set-dev-canonical-url",
+                        finding,
+                        "copy",
+                        new_id,
+                        original_url=original_url,
+                        copy_state=state,
+                    )
+                )
+            elif copy_canonical is None:
+                advice.append(
+                    _recommend(
+                        "epi.pair.canonical.add-copy-canonical",
+                        finding,
+                        "copy",
+                        new_id,
+                        original_url=original_url,
+                    )
+                )
+            else:
+                advice.append(
+                    _recommend(
+                        "epi.pair.canonical.set-copy-canonical",
+                        finding,
+                        "copy",
+                        new_id,
+                        original_url=original_url,
+                        copy_canonical=copy_canonical,
+                    )
+                )
+        elif finding.target == "original":
+            advice.append(
+                _recommend(
+                    "epi.pair.canonical.set-original-canonical",
+                    finding,
+                    "original",
+                    new_id,
+                    original_url=original_url,
+                    original_canonical=original_canonical or "",
+                )
+            )
+    return advice

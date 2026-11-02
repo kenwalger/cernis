@@ -31,8 +31,8 @@ evidence. No scores, no grades, no predicted outcomes.
 
 ## Status
 
-**Pre-release, under active development.** Single-page audits work today; the
-cross-post pair check is next. The version on PyPI (0.0.1) only reserves the
+**Pre-release, under active development.** Single-page audits and the
+cross-post pair check work today. The version on PyPI (0.0.1) only reserves the
 name, so install from source for now. Expect commands and report formats to
 change before 0.1.0.
 
@@ -74,6 +74,18 @@ type = "wordpress"
 uv run cernis audit https://www.example.com/blog/my-post/ --map cernis-map.toml
 ```
 
+Check a cross-post: audit the original and its copy, then check that the
+copy's canonical URL names the original:
+
+```bash
+uv run cernis pair --original https://www.example.com/blog/my-post/ \
+  --copy https://dev.to/<user>/<article-slug> --map cernis-map.toml
+uv run cernis pairs --map cernis-map.toml    # every [[pair]] in the map
+```
+
+For a site you fully control that is neither DEV nor WordPress, declare it
+`owned` (`--site-type owned`, or `type = "owned"` in the map).
+
 Other useful commands:
 
 ```bash
@@ -98,15 +110,21 @@ Checks on the page itself (peritext):
 | `peri.jsonld.parses` | Whether each JSON-LD block parses, and its types |
 | `peri.title` | The title and its length |
 
+Checks around the page (epitext):
+
+| Check | What it reports |
+| --- | --- |
+| `epi.pair.canonical` | Whether a copy's canonical URL names its original, and the original's names itself |
+| `epi.canonical.resolves` | What each canonical URL answers, and where it redirects |
+| `epi.og.image.resolves` | Whether the social image answers with an image |
+
 A defect is reported only for a violation of a published standard (such as WCAG
 or the Open Graph protocol) or of the author's own stated intent, never for a
 style convention. Lengths and counts are reported as facts, not judged.
 
-**Coming next:** the cross-post pair check (does a DEV copy's canonical point at
-your original?), whether canonical URLs and social images actually resolve,
-robots.txt access for AI crawlers, sitemaps, broken links, and history across
-runs, which tells you whether a change came from you, the platform, or Cernis
-itself.
+**Coming next:** robots.txt access for AI crawlers, sitemaps, broken links, and
+history across runs, which tells you whether a change came from you, the
+platform, or Cernis itself.
 
 ## Polite by design
 

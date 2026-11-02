@@ -2,7 +2,7 @@
 
 Run: 20261030T120000Z · Cernis 0.1.0.dev0
 Started: 2026-10-30T12:00:00+00:00 · Finished: 2026-10-30T12:00:01+00:00
-Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 2 · peri.og.url_matches_canonical 1 · peri.lang 2 · peri.jsonld.parses 1 · peri.title 1
+Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 2 · peri.og.url_matches_canonical 2 · peri.lang 2 · peri.jsonld.parses 1 · peri.title 1 · epi.canonical.resolves 1 · epi.og.image.resolves 1
 
 Subjects:
 
@@ -10,7 +10,7 @@ Subjects:
 - https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 1+n1, declared
 - https://blog.example.com/gone/: not read (FETCH_FAILED)
 
-## Observed (26)
+## Observed (30)
 
 ### https://dev.to/example-author/a-synthetic-post-1a2b
 
@@ -51,7 +51,7 @@ Subjects:
   Evidence: `head > meta[property="og:url"] content`: `https://dev.to/example-author/a-synthetic-post-1a2b` (receipt r-002)
 
 - DEFECT · PLATFORM · peri.og.url_matches_canonical
-  og:url (https://dev.to/example-author/a-synthetic-post-1a2b) and the canonical URL (https://blog.example.com/2026/10/a-synthetic-post/) are different.
+  og:url (https://dev.to/example-author/a-synthetic-post-1a2b) and the canonical URL (https://blog.example.com/2026/10/a-synthetic-post/) are different; the Open Graph protocol (ogp.me) defines og:url as the object's canonical URL.
   Evidence: `head > meta[property="og:url"] content`: `https://dev.to/example-author/a-synthetic-post-1a2b` (receipt r-002)
   Evidence: `head > link[rel="canonical"] href`: `https://blog.example.com/2026/10/a-synthetic-post/` (receipt r-002)
 
@@ -66,6 +66,15 @@ Subjects:
 - PLATFORM · peri.title
   The page's title is 47 characters long.
   Evidence: `head > title`: `A Synthetic Post About Fixtures - DEV Community` (receipt r-002)
+
+- AUTHOR · epi.canonical.resolves · https://blog.example.com/2026/10/a-synthetic-post/
+  The canonical URL https://blog.example.com/2026/10/a-synthetic-post/ answers 200.
+  Evidence: `HTTP status`: `200` (receipt r-006)
+
+- PLATFORM · epi.og.image.resolves · https://media.dev.example/cover/synthetic-cover.png
+  og:image https://media.dev.example/cover/synthetic-cover.png answers 200 with an image (image/png).
+  Evidence: `HTTP status`: `200` (receipt r-008)
+  Evidence: `Content-Type`: `image/png` (receipt r-008)
 
 ### https://blog.example.com/two-canonicals/
 
@@ -124,13 +133,25 @@ Subjects:
   The page's title is 26 characters long.
   Evidence: `head > title`: `A Post With Two Canonicals` (receipt r-004)
 
-## Recommendations (1)
+- AUTHOR · epi.canonical.resolves · https://blog.example.com/two-canonicals/
+  The canonical URL https://blog.example.com/two-canonicals/ answers 200.
+  Evidence: `HTTP status`: `200` (receipt r-004)
+
+- DEFECT · AUTHOR · epi.canonical.resolves · https://dev.to/example-author/two-canonicals-5e6f
+  The canonical URL https://dev.to/example-author/two-canonicals-5e6f answers 404, so it names no page.
+  Evidence: `HTTP status`: `404` (receipt r-009)
+
+## Recommendations (2)
 
 ### https://blog.example.com/two-canonicals/
 
 - Remove the extra canonical links so that the page declares one canonical URL, the page's preferred URL.
   Why: The page declares 2 canonical links that name different URLs (https://blog.example.com/two-canonicals/, https://dev.to/example-author/two-canonicals-5e6f). RFC 6596 defines the canonical link relation as naming one preferred URL for a page; links that disagree leave that URL undeclared.
   Based on: peri.canonical.single (The page declares 2 canonical links that name different URLs.)
+
+- Change the canonical URL https://dev.to/example-author/two-canonicals-5e6f to the URL of a page that exists.
+  Why: A canonical URL names the preferred URL for the page (RFC 6596), and https://dev.to/example-author/two-canonicals-5e6f answers 404, so it names no page.
+  Based on: epi.canonical.resolves (The canonical URL https://dev.to/example-author/two-canonicals-5e6f answers 404, so it names no page.)
 
 ## Not determinable (non liquet) (13)
 

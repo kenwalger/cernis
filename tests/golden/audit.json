@@ -30,7 +30,7 @@
     },
     {
       "id": "peri.og.url_matches_canonical",
-      "version": "1"
+      "version": "2"
     },
     {
       "id": "peri.lang",
@@ -43,6 +43,14 @@
     {
       "id": "peri.title",
       "version": "1"
+    },
+    {
+      "id": "epi.canonical.resolves",
+      "version": "1"
+    },
+    {
+      "id": "epi.og.image.resolves",
+      "version": "1"
     }
   ],
   "subjects": [
@@ -50,9 +58,10 @@
     "https://blog.example.com/two-canonicals/",
     "https://blog.example.com/gone/"
   ],
+  "pairs": [],
   "counts": {
-    "observed": 26,
-    "recommendations": 1,
+    "observed": 30,
+    "recommendations": 2,
     "not_determinable": 13
   },
   "findings": [
@@ -285,13 +294,13 @@
       "id": "f-010",
       "key": "a4a8799304807b1ea75dd32599fde923095526c83ff89907a446d890ab3d0a0a",
       "check_id": "peri.og.url_matches_canonical",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "PLATFORM",
       "defect": true,
       "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
       "target": "",
-      "summary": "og:url (https://dev.to/example-author/a-synthetic-post-1a2b) and the canonical URL (https://blog.example.com/2026/10/a-synthetic-post/) are different.",
+      "summary": "og:url (https://dev.to/example-author/a-synthetic-post-1a2b) and the canonical URL (https://blog.example.com/2026/10/a-synthetic-post/) are different; the Open Graph protocol (ogp.me) defines og:url as the object's canonical URL.",
       "evidence": [
         {
           "receipt_id": "r-002",
@@ -634,7 +643,7 @@
       "id": "f-023",
       "key": "5faae59e276a03b3a5230e3bd0418e8db213acddce2748f729e128f0cbd87342",
       "check_id": "peri.og.url_matches_canonical",
-      "check_version": "1",
+      "check_version": "2",
       "status": "OBSERVED",
       "actor": "AUTHOR",
       "defect": false,
@@ -979,7 +988,7 @@
       "id": "f-037",
       "key": "7815a55aec84eca6a83fa0e4ae4878e46fdf569309bfadd86275719a72bb6624",
       "check_id": "peri.og.url_matches_canonical",
-      "check_version": "1",
+      "check_version": "2",
       "status": "NOT_DETERMINABLE",
       "actor": "UNKNOWN",
       "defect": false,
@@ -1074,6 +1083,132 @@
       "reason_code": "FETCH_FAILED",
       "question": "What the page's title is, and how long it is",
       "would_require": null
+    },
+    {
+      "id": "f-041",
+      "key": "822bff089f3a82a9998f77431876892c87c9c0a9c8d82368c4b8db83406b5276",
+      "check_id": "epi.canonical.resolves",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "https://blog.example.com/2026/10/a-synthetic-post/",
+      "summary": "The canonical URL https://blog.example.com/2026/10/a-synthetic-post/ answers 200.",
+      "evidence": [
+        {
+          "receipt_id": "r-006",
+          "location": "HTTP status",
+          "observed": "200",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-042",
+      "key": "da6396865e628da9ec7adeccb0bafcf5c08acf9b51048d199de9cd082248923e",
+      "check_id": "epi.og.image.resolves",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "https://media.dev.example/cover/synthetic-cover.png",
+      "summary": "og:image https://media.dev.example/cover/synthetic-cover.png answers 200 with an image (image/png).",
+      "evidence": [
+        {
+          "receipt_id": "r-008",
+          "location": "HTTP status",
+          "observed": "200",
+          "searched_for": null
+        },
+        {
+          "receipt_id": "r-008",
+          "location": "Content-Type",
+          "observed": "image/png",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-043",
+      "key": "c9e7e2b00453f6a4d2a8cc17a871727b3ce2f359e88e4fcbcbad99de8f0fa339",
+      "check_id": "epi.canonical.resolves",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "https://blog.example.com/two-canonicals/",
+      "summary": "The canonical URL https://blog.example.com/two-canonicals/ answers 200.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "HTTP status",
+          "observed": "200",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-044",
+      "key": "c6662464f84e8fb5635c2426345b8f77e26d65672a4e53452920ab673b71ba7c",
+      "check_id": "epi.canonical.resolves",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": true,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "https://dev.to/example-author/two-canonicals-5e6f",
+      "summary": "The canonical URL https://dev.to/example-author/two-canonicals-5e6f answers 404, so it names no page.",
+      "evidence": [
+        {
+          "receipt_id": "r-009",
+          "location": "HTTP status",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-045",
+      "key": "1066c9801ecc7cd736bd83354ac76dc4306d186251d5747fa832b765bade30b3",
+      "check_id": "epi.canonical.resolves",
+      "check_version": "1",
+      "status": "RECOMMENDATION",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "epi.canonical.resolves.fix-canonical:https://dev.to/example-author/two-canonicals-5e6f",
+      "summary": "Change the canonical URL https://dev.to/example-author/two-canonicals-5e6f to the URL of a page that exists.",
+      "evidence": [],
+      "rationale": "A canonical URL names the preferred URL for the page (RFC 6596), and https://dev.to/example-author/two-canonicals-5e6f answers 404, so it names no page.",
+      "based_on": [
+        "f-044"
+      ],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
     }
   ],
   "receipts": [
@@ -1146,6 +1281,66 @@
       "error_kind": "TIMEOUT",
       "fetched_at": "2026-10-29T12:00:00+00:00",
       "body_sha256": null,
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-006",
+      "requested_url": "https://blog.example.com/2026/10/a-synthetic-post/",
+      "final_url": "https://blog.example.com/2026/10/a-synthetic-post/",
+      "redirect_chain": [],
+      "status_code": 200,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "b633a587c652d02386c4f16f8c6f6aab7352d97f16367c3c40576214372dd628",
+      "body_truncated_at": null,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-007",
+      "requested_url": "https://media.dev.example/robots.txt",
+      "final_url": "https://media.dev.example/robots.txt",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-008",
+      "requested_url": "https://media.dev.example/cover/synthetic-cover.png",
+      "final_url": "https://media.dev.example/cover/synthetic-cover.png",
+      "redirect_chain": [],
+      "status_code": 200,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "796120837694d3f3f29259cfeb25091698c2a0aa87873658d840b4993ee889b3",
+      "body_truncated_at": null,
+      "headers": {
+        "content-type": "image/png"
+      },
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-009",
+      "requested_url": "https://dev.to/example-author/two-canonicals-5e6f",
+      "final_url": "https://dev.to/example-author/two-canonicals-5e6f",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "body_truncated_at": null,
       "headers": {},
       "cernis_version": "0.1.0.dev0",

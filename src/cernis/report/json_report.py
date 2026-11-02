@@ -8,6 +8,8 @@ The report is one JSON object:
 - ``checks``: the ``id`` and ``version`` of every check with a finding in the
   run, in registry order;
 - ``subjects``: the audited URLs;
+- ``pairs``: each declared ``original`` and ``copy`` audited together
+  (added in Session 5a; adding a field does not change the version);
 - ``counts``: the number of findings in each report section
   (``observed``, ``recommendations``, ``not_determinable``), and nothing
   else (principle 2: no scores or summary numbers);
@@ -154,6 +156,7 @@ def report_json(run: Run) -> str:
         },
         "checks": [{"id": cid, "version": version} for cid, version in checks_in(run)],
         "subjects": list(run.subjects),
+        "pairs": [{"original": pair.original, "copy": pair.copy} for pair in run.pairs],
         "counts": section_counts(run),
         "findings": [finding_as_dict(finding) for finding in run.findings],
         "receipts": [receipt_as_dict(receipt) for receipt in run.receipts],

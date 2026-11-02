@@ -149,57 +149,123 @@ def _not_determinable(group: list[Finding]) -> list[str]:
     return lines + [_evidence_line(item) for item in first.evidence]
 
 
-def _subject_lines(run: Run, snapshots: dict[str, Snapshot]) -> list[str]:
-    """Describe each subject and how it was read.
+def _snapshot_of(run: Run, subject: str) -> Snapshot | None:
+    """Find the snapshot of a subject's page.
 
     :param run: The run.
-    :param snapshots: Snapshots by receipt id.
-    :return: One line per subject.
+    :param subject: The subject URL.
+    :return: The snapshot whose receipt requested the subject, or ``None`` if
+        the page was not read whole.
+    """
+    requested = {receipt.id: receipt.requested_url for receipt in run.receipts}
+    for snap in run.snapshots:
+        if requested.get(snap.receipt_id) == subject:
+            return snap
+    return None
+
+
+def _how_read(run: Run, subject: str) -> str:
+    """Say how a subject's page was read.
+
+    :param run: The run.
+    :param subject: The subject URL.
+    :return: The extractor and its selection, or why the page was not read.
+    """
+    snap = _snapshot_of(run, subject)
+    if snap is not None:
+        return (
+            f"read whole (receipt {snap.receipt_id}); extractor {snap.extractor_id} "
+            f"{snap.extractor_version}, {snap.extractor_selection.value}"
+        )
+    codes = sorted(
+        {
+            f.reason_code.value
+            for f in run.findings
+            if f.subject_url == subject
+            and f.reason_code is not None
+            and f.status is Status.NOT_DETERMINABLE
+            and not f.check_id.startswith("epi.")
+        }
+    )
+    return f"not read ({', '.join(codes)})" if codes else "not read"
+
+
+def _subject_lines(run: Run) -> list[str]:
+    """Describe each pair and each subject, and how each page was read.
+
+    :param run: The run.
+    :return: The lines.
     """
     lines: list[str] = []
+    for number, pair in enumerate(run.pairs, start=1):
+        lines.append(f"- Pair {number}: original {escape(pair.original)}; copy {escape(pair.copy)}")
     for subject in run.subjects:
-        receipt_ids = {
-            item.receipt_id
-            for f in run.findings
-            if f.subject_url == subject and f.status is Status.OBSERVED
-            for item in f.evidence
-        }
-        read = [snapshots[rid] for rid in sorted(receipt_ids) if rid in snapshots]
-        if read:
-            snap = read[0]
-            how = (
-                f"read whole (receipt {snap.receipt_id}); extractor {snap.extractor_id} "
-                f"{snap.extractor_version}, {snap.extractor_selection.value}"
-            )
-        else:
-            codes = sorted(
-                {
-                    f.reason_code.value
-                    for f in run.findings
-                    if f.subject_url == subject
-                    and f.reason_code is not None
-                    and f.status is Status.NOT_DETERMINABLE
-                }
-            )
-            how = f"not read ({', '.join(codes)})" if codes else "not read"
-        lines.append(f"- {escape(subject)}: {how}")
+        lines.append(f"- {escape(subject)}: {_how_read(run, subject)}")
     return lines
+
+
+def _page_title(run: Run, subject: str) -> str | None:
+    """Return a subject page's title, if it was read.
+
+    :param run: The run.
+    :param subject: The subject URL.
+    :return: The title, whitespace collapsed, or ``None``.
+    """
+    for finding in run.findings:
+        if (
+            finding.check_id == "peri.title"
+            and finding.status is Status.OBSERVED
+            and finding.subject_url == subject
+        ):
+            observed = finding.evidence[0].observed
+            if observed and observed.strip():
+                return " ".join(observed.split())
+    return None
 
 
 def _title(run: Run) -> str:
     """Choose the report's heading.
 
     :param run: The run.
-    :return: ``Cernis audit: <page title>`` for one page with a title, else
-        ``Cernis audit``.
+    :return: ``Cernis audit: <title>`` for one page, or one pair (the
+        original's title), with a title; else ``Cernis audit``.
     """
     if len(run.subjects) == 1:
-        for finding in run.findings:
-            if finding.check_id == "peri.title" and finding.status is Status.OBSERVED:
-                observed = finding.evidence[0].observed
-                if observed and observed.strip():
-                    return f"Cernis audit: {escape(' '.join(observed.split()))}"
-    return "Cernis audit"
+        found = _page_title(run, run.subjects[0])
+    elif len(run.pairs) == 1 and len(run.subjects) == 2:
+        found = _page_title(run, run.pairs[0].original) or _page_title(run, run.pairs[0].copy)
+    else:
+        found = None
+    return f"Cernis audit: {escape(found)}" if found else "Cernis audit"
+
+
+_PAIR_CHECK = "epi.pair.canonical"
+
+
+def _groups(run: Run) -> list[tuple[str | None, list[tuple[str | None, str, bool]]]]:
+    """Arrange the subjects for the report: each pair as one subject, then the rest.
+
+    :param run: The run.
+    :return: ``(heading, parts)`` per group, each part ``(heading, subject,
+        pair findings)``: the subject whose findings it shows, and whether it
+        shows that subject's pair-check findings rather than its page
+        findings. A page in several pairs is shown with the first.
+    """
+    groups: list[tuple[str | None, list[tuple[str | None, str, bool]]]] = []
+    shown: set[str] = set()
+    for pair in run.pairs:
+        parts: list[tuple[str | None, str, bool]] = []
+        for role, url in (("Original", pair.original), ("Copy", pair.copy)):
+            if url not in shown:
+                parts.append((f"{role}: {escape(url)}", url, False))
+                shown.add(url)
+        parts.append(("The pair", pair.copy, True))
+        heading = f"Pair: {escape(pair.copy)} (copy of {escape(pair.original)})"
+        groups.append((heading, parts))
+    for subject in run.subjects:
+        if subject not in shown:
+            groups.append((escape(subject), [(None, subject, False)]))
+    return groups
 
 
 def report_markdown(run: Run) -> str:
@@ -210,49 +276,79 @@ def report_markdown(run: Run) -> str:
     """
     counts = section_counts(run)
     by_id = {finding.id: finding for finding in run.findings}
-    snapshots = {snap.receipt_id: snap for snap in run.snapshots}
     checks = " · ".join(f"{cid} {version}" for cid, version in checks_in(run))
-    lines = [
-        f"# {_title(run)}",
-        "",
+    lines = [f"# {_title(run)}", ""]
+    if len(run.pairs) == 1:
+        lines += [
+            f"Copy: {escape(run.pairs[0].copy)}",
+            f"Original: {escape(run.pairs[0].original)}",
+        ]
+    lines += [
         f"Run: {run.id} · Cernis {run.cernis_version}",
         f"Started: {run.started_at.isoformat()} · Finished: {run.finished_at.isoformat()}",
         f"Checks: {checks or 'none'}",
         "",
         "Subjects:",
         "",
-        *_subject_lines(run, snapshots),
+        *_subject_lines(run),
     ]
     sections = (
         ("Observed", Status.OBSERVED, counts["observed"]),
         ("Recommendations", Status.RECOMMENDATION, counts["recommendations"]),
         ("Not determinable (non liquet)", Status.NOT_DETERMINABLE, counts["not_determinable"]),
     )
-    several = len(run.subjects) > 1
+    groups = _groups(run)
+    several = len(groups) > 1 or bool(run.pairs)
     for heading, status, count in sections:
         lines += ["", f"## {heading} ({count})"]
         if count == 0:
             lines += ["", "None."]
             continue
-        for subject in run.subjects:
-            chosen = [f for f in run.findings if f.status is status and f.subject_url == subject]
-            if not chosen:
-                continue
-            if several:
-                lines += ["", f"### {escape(subject)}"]
-            if status is Status.NOT_DETERMINABLE:
-                groups = [
-                    list(group)
-                    for _, group in groupby(chosen, key=lambda f: (f.reason_code, f.evidence))
+        for group_heading, parts in groups:
+            rendered_parts: list[list[str]] = []
+            for part_heading, subject, pair_part in parts:
+                chosen = [
+                    f
+                    for f in run.findings
+                    if f.status is status
+                    and f.subject_url == subject
+                    and (f.check_id == _PAIR_CHECK) is pair_part
                 ]
-                for group in groups:
-                    lines += ["", *_not_determinable(group)]
-            else:
-                for finding in chosen:
-                    rendered = (
-                        _observed(finding)
-                        if status is Status.OBSERVED
-                        else _recommendation(finding, by_id)
-                    )
-                    lines += ["", *rendered]
+                if not chosen:
+                    continue
+                body: list[str] = []
+                if part_heading is not None:
+                    body += ["", f"#### {part_heading}"]
+                body += _render(chosen, status, by_id)
+                rendered_parts.append(body)
+            if not rendered_parts:
+                continue
+            if several and group_heading is not None:
+                lines += ["", f"### {group_heading}"]
+            for body in rendered_parts:
+                lines += body
     return "\n".join(lines) + "\n"
+
+
+def _render(chosen: list[Finding], status: Status, by_id: dict[str, Finding]) -> list[str]:
+    """Render one part's findings in one section.
+
+    :param chosen: The findings, all with ``status``.
+    :param status: The section's status.
+    :param by_id: Every finding in the run, by id.
+    :return: The lines.
+    """
+    lines: list[str] = []
+    if status is Status.NOT_DETERMINABLE:
+        groups = [
+            list(group) for _, group in groupby(chosen, key=lambda f: (f.reason_code, f.evidence))
+        ]
+        for group in groups:
+            lines += ["", *_not_determinable(group)]
+        return lines
+    for finding in chosen:
+        rendered = (
+            _observed(finding) if status is Status.OBSERVED else _recommendation(finding, by_id)
+        )
+        lines += ["", *rendered]
+    return lines

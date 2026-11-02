@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.4 (2026-10-30). Draft 2.4 adds dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.5 (2026-11-02). Draft 2.5 records Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -80,11 +80,11 @@ Reason codes for `NOT_DETERMINABLE`:
 
 | Actor | Meaning | Examples |
 | --- | --- | --- |
-| `AUTHOR` | The author can change it | DEV front matter (canonical URL, description, cover image); anything on WordPress |
+| `AUTHOR` | The author can change it | DEV front matter (canonical URL, description, cover image); anything on WordPress or on an `owned` site |
 | `PLATFORM` | Only the platform can change it | dev.to's robots.txt, DEV's page template |
 | `UNKNOWN` | Cannot tell who controls it | A tag that could come from a theme or a plugin |
 
-The same check can produce different actors on different sites: robots.txt is `PLATFORM` on dev.to and `AUTHOR` on kenwalger.com.
+The same check can produce different actors on different sites: robots.txt is `PLATFORM` on dev.to and `AUTHOR` on kenwalger.com. A page declared `owned` (below) is the author's throughout: every finding about it, including a fetch that failed, has actor `AUTHOR`.
 
 ### The no-promise rule, enforced
 
@@ -160,7 +160,7 @@ Snapshot
   frame_sha256       the rest of the page, normalized (navigation, footer, template)
 ```
 
-Finding the article body needs a site-aware extractor (DEV's article container, WordPress's entry content). The extractor is chosen by the URL's **declared site type** first (a `--site-type` option, then the URL's own entry in the pair map file), then by the longest matching **prefix rule** in the pair map (`[[site]]`), then by known hosts (dev.to); otherwise the generic extractor is used, which returns no body. Cernis does not guess a site type from page content. If the extractor finds no body, or finds more than one candidate, `content_sha256` is None, and any change involving that snapshot is `UNCLASSIFIED`. The snapshot records which rule selected its extractor: declared, prefix, host, or generic.
+Finding the article body needs a site-aware extractor (DEV's article container, WordPress's entry content). The extractor is chosen by the URL's **declared site type** first (a `--site-type` option, then the URL's own entry in the pair map file), then by the longest matching **prefix rule** in the pair map (`[[site]]`), then by known hosts (dev.to); otherwise the generic extractor is used, which returns no body. The site types are `dev`, `wordpress`, and `owned`: `owned` is for pages the author fully controls that have no specific extractor, read with the generic extractor and with actor `AUTHOR` on every finding (Session 5a). Cernis does not guess a site type from page content. If the extractor finds no body, or finds more than one candidate, `content_sha256` is None, and any change involving that snapshot is `UNCLASSIFIED`. The snapshot records which rule selected its extractor: declared, prefix, host, or generic.
 
 ### URL comparison
 
@@ -193,7 +193,7 @@ Checks against the fetched HTML of the article itself.
 | `peri.canonical.absolute` | Whether the canonical is an absolute URL | Relative or malformed |
 | `peri.meta.description` | Presence, and length in characters | Never (absence and length are facts) |
 | `peri.og.core` | Presence of `og:title`, `og:type`, `og:description`, `og:image`, `og:url`, one finding per property (the property is the `target`) | The page declares at least one `og:` property and a property the Open Graph protocol requires (`og:title`, `og:type`, `og:image`, `og:url`) is absent or empty. A page with no `og:` properties at all is a fact, never a defect; `og:description` is optional |
-| `peri.og.url_matches_canonical` | The URL comparison outcome | `DIFFERENT` |
+| `peri.og.url_matches_canonical` | The URL comparison outcome | `DIFFERENT`. The Open Graph protocol defines `og:url` as the object's canonical URL, so an `og:url` that names a different page than the canonical link contradicts that standard. DEV cross-posts always show this defect, as `PLATFORM` with no recommendation: DEV sets `og:url` to the DEV page whatever the front matter's `canonical_url` says, and the author cannot change it |
 | `peri.lang` | The `<html lang>` value, or its absence | The attribute is missing or empty (WCAG 2 success criterion 3.1.1, Language of Page, Level A) |
 | `peri.jsonld.parses` | Each JSON-LD block's `@type`, one finding per block | A block fails to parse as JSON |
 | `peri.title` | The `<title>` and its length | Never |
@@ -204,9 +204,9 @@ Checks against things outside the article's HTML.
 
 | ID | Reports | Defect when |
 | --- | --- | --- |
-| `epi.pair.canonical` | **The flagship check.** Given a declared original and copy: the URL comparison outcome for the copy's canonical against the original, and for the original's canonical against itself | Either comparison is `DIFFERENT`, or the copy has no canonical at all |
-| `epi.canonical.resolves` | The canonical URL's status and redirect chain | 404 or 410 (401 and 403 are `ACCESS_DENIED`; 429 is `RATE_LIMITED`) |
-| `epi.og.image.resolves` | The `og:image` URL's status and content type | 404 or 410, or a 200 that is not an image content type |
+| `epi.pair.canonical` | **The flagship check.** Given a declared original and copy: the URL comparison outcome for the copy's canonical against the original, and for the original's canonical against itself. Two findings, targets `copy` and `original`, both about the copy's URL and both `AUTHOR`. `EQUIVALENT` is a fact that names each normalization that mattered (or the redirect, with its receipt). An original with no canonical is a fact. If the original cannot be read whole, both findings are `NOT_DETERMINABLE` with the original's reason code; if only the copy cannot, the copy's finding is. A page whose canonicals disagree makes its side `AMBIGUOUS` | Either comparison is `DIFFERENT`, or the copy has no canonical at all |
+| `epi.canonical.resolves` | Each canonical URL's status and full redirect chain, fetched through the normal fetcher (robots.txt, the address screen, pacing, retries); one finding per distinct canonical, the URL is the `target`. A redirect is a fact that names the final URL | 404 or 410 (401 and 403 are `ACCESS_DENIED`; 429 is `RATE_LIMITED`; a failed fetch or 5xx is `FETCH_FAILED`) |
+| `epi.og.image.resolves` | The `og:image` URL's status and content type, fetched with the normal size limit. The image is never decoded or stored, and never cached; only the receipt is kept. On DEV, which generates the image, the actor is `PLATFORM` and a defect has no recommendation | 404 or 410, or a 2xx whose content type is not `image/*` (or is missing) |
 | `epi.robots.access` | What the site's robots.txt says about this URL for general crawlers and for each named AI crawler (one finding per crawler; the crawler is the `target`) | Never; whether to allow AI crawlers is the author's or platform's choice |
 | `epi.sitemap.listed` | Whether the URL appears in the site's sitemap (WordPress) | Absent from a sitemap that exists and lists other posts |
 | `epi.links.resolve` | Each body link's status, paced (the link is the `target`) | 404 or 410 only |
@@ -315,6 +315,7 @@ Cernis is a deliberate real-world test of the SDK, its first consumer outside th
 - Every request has an overall deadline, not only per-read timeouts, so a server that trickles its headers cannot hold a fetch open indefinitely.
 - At most one request per second per host, with a configurable delay
 - Conditional requests (ETag, Last-Modified) and a local cache in a git-ignored directory
+- Within a run, each distinct URL is fetched once and its receipt reused: a canonical that is the page itself, a page that redirected to its canonical, or an original shared by two pairs costs one request. Images are fetched without a stored body, so the cache never holds them.
 - No credentials in the MVP. DEV article pages and the public DEV articles listing need no API key.
 
 ### Data and privacy
@@ -326,11 +327,11 @@ Cernis reads public pages of the author's own articles. It never touches comment
 ## 7. The CLI (sketch)
 
 ```text
-cernis audit <url> [<url> ...] [--site-type dev|wordpress] [--format md|json]
+cernis audit <url> [<url> ...] [--site-type dev|wordpress|owned] [--map <file>] [--format md|json]
 cernis audit --from-sitemap <sitemap-url>
 cernis audit --from-dev-user <username>
-cernis pair --original <url> --copy <url>
-cernis pairs --map <file>            a list of original/copy pairs
+cernis pair --original <url> --copy <url> [--original-site TYPE] [--copy-site TYPE] [--map <file>]
+cernis pairs --map <file>            every [[pair]] in a pair map (docs/PAIR-MAP.md)
 cernis history <url>
 cernis diff <url> [--from <run-id>] [--to <run-id>]
 cernis checks                        list every check with its id, version, and family
@@ -415,7 +416,7 @@ Each phase is one or more numbered Claude Code sessions, with the usual CLAUDE.m
 | 1.5 | CI on Python 3.12 to 3.14, and Trusted Publishing to PyPI | CI green on a pull request; `docs/RELEASING.md` written |
 | 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Done in Session 3. Session 3b adds the SSRF guard, the RFC 9309 matcher, and the overall request deadline. |
 | 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | `cernis audit <url>` produces a report from fixtures and from one real article |
-| 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | `cernis pairs --map` runs over all cross-posted articles |
+| 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | `cernis pairs --map` runs over all cross-posted articles. Session 5a adds the pair check, canonical and og:image resolution, `owned`, `cernis pair`, and `cernis pairs`. |
 | 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass |
 | 6 | Fix the *proposed* numbers, run the first full audit, review every defect, evaluate C-1 to C-5 | An evaluation note, and material for an article |
 

@@ -573,6 +573,28 @@ def _require_utc(owner: str, name: str, value: object) -> None:
 
 
 @dataclass(frozen=True, kw_only=True)
+class RunPair:
+    """A declared original and copy audited together in a run.
+
+    :param original: The original's URL, one of the run's subjects.
+    :param copy: The copy's URL, one of the run's subjects.
+    """
+
+    original: str
+    copy: str
+
+    def __post_init__(self) -> None:
+        """Check that both URLs are non-empty strings.
+
+        :raises RunError: If either is not.
+        """
+        for name in ("original", "copy"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise RunError(f"RunPair: {name} must be a non-empty URL string")
+
+
+@dataclass(frozen=True, kw_only=True)
 class Run:
     """One audit: the receipts, snapshots, and findings it produced, checked as a whole.
 
@@ -584,7 +606,8 @@ class Run:
     - every piece of evidence names a receipt in the run;
     - every ``based_on`` id names a finding in the run, and that finding is
       ``OBSERVED``;
-    - every snapshot is of a receipt in the run, at most one per receipt.
+    - every snapshot is of a receipt in the run, at most one per receipt;
+    - every pair names two different subjects of the run, and no pair repeats.
 
     :param id: The run id, such as ``20261030T120000Z``.
     :param started_at: When the run started, in UTC.
@@ -594,6 +617,8 @@ class Run:
     :param receipts: Every receipt the run produced, robots.txt included.
     :param snapshots: A snapshot of each page Cernis read whole.
     :param findings: Every finding, in report order.
+    :param pairs: The original and copy pairs audited, in order; empty for a
+        run of single pages.
     :raises RunError: If any run rule is broken.
     """
 
@@ -605,6 +630,7 @@ class Run:
     receipts: tuple[Receipt, ...]
     snapshots: tuple[Snapshot, ...]
     findings: tuple[Finding, ...]
+    pairs: tuple[RunPair, ...] = ()
 
     def __post_init__(self) -> None:
         """Check the run as a whole.
@@ -623,6 +649,19 @@ class Run:
             isinstance(subject, str) and subject.strip() for subject in self.subjects
         ):
             raise RunError(f"{owner}: subjects must be a non-empty tuple of URLs")
+
+        seen_pairs: set[tuple[str, str]] = set()
+        for pair in self.pairs:
+            if not isinstance(pair, RunPair):
+                raise RunError(f"{owner}: pairs must be a tuple of RunPair")
+            for url in (pair.original, pair.copy):
+                if url not in self.subjects:
+                    raise RunError(f"{owner}: pair names {url!r}, not a subject of the run")
+            if pair.original == pair.copy:
+                raise RunError(f"{owner}: a pair's copy is its own original ({pair.copy!r})")
+            if (pair.original, pair.copy) in seen_pairs:
+                raise RunError(f"{owner}: pair {pair.original!r}, {pair.copy!r} repeated")
+            seen_pairs.add((pair.original, pair.copy))
 
         receipt_ids = [receipt.id for receipt in self.receipts]
         repeated = sorted({rid for rid in receipt_ids if receipt_ids.count(rid) > 1})

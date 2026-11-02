@@ -93,13 +93,24 @@ def _robots_actor(site: SiteType | None) -> Actor:
     """Say who controls a site's robots.txt (DESIGN.md section 3, Actor).
 
     :param site: The site type.
-    :return: ``PLATFORM`` on DEV, ``AUTHOR`` on WordPress, else ``UNKNOWN``.
+    :return: ``PLATFORM`` on DEV, ``AUTHOR`` on WordPress or an owned site, else
+        ``UNKNOWN``.
     """
     if site is SiteType.DEV:
         return Actor.PLATFORM
-    if site is SiteType.WORDPRESS:
+    if site in (SiteType.WORDPRESS, SiteType.OWNED):
         return Actor.AUTHOR
     return Actor.UNKNOWN
+
+
+def _owner_actor(site: SiteType | None) -> Actor:
+    """Say who controls a page Cernis could not read.
+
+    :param site: The site type.
+    :return: ``AUTHOR`` on a site declared ``owned``; otherwise ``UNKNOWN``,
+        since a failed fetch may be the host's doing, not the author's.
+    """
+    return Actor.AUTHOR if site is SiteType.OWNED else Actor.UNKNOWN
 
 
 def classify(result: FetchResult, site: SiteType | None) -> Readable | Unreadable:
@@ -143,7 +154,7 @@ def classify(result: FetchResult, site: SiteType | None) -> Readable | Unreadabl
             reason_code=ReasonCode.ADDRESS_REFUSED,
             why=f"Cernis refused to contact it: {reason}",
             evidence=(Evidence(receipt_id=final.id, location="address screen", observed=reason),),
-            actor=Actor.UNKNOWN,
+            actor=_owner_actor(site),
         )
     if final.error_kind is not ErrorKind.NONE:
         evidence = [
@@ -159,7 +170,7 @@ def classify(result: FetchResult, site: SiteType | None) -> Readable | Unreadabl
             reason_code=ReasonCode.FETCH_FAILED,
             why=_ERROR_WHY[final.error_kind],
             evidence=tuple(evidence),
-            actor=Actor.UNKNOWN,
+            actor=_owner_actor(site),
         )
     status = final.status_code
     if result.rate_limited:
@@ -174,7 +185,7 @@ def classify(result: FetchResult, site: SiteType | None) -> Readable | Unreadabl
                 )
                 for r in result.receipts
             ),
-            actor=Actor.UNKNOWN,
+            actor=_owner_actor(site),
         )
     status_evidence = (Evidence(receipt_id=final.id, location="HTTP status", observed=str(status)),)
     if status in (401, 403):
@@ -182,7 +193,7 @@ def classify(result: FetchResult, site: SiteType | None) -> Readable | Unreadabl
             reason_code=ReasonCode.ACCESS_DENIED,
             why=f"the server answered {status}",
             evidence=status_evidence,
-            actor=Actor.UNKNOWN,
+            actor=_owner_actor(site),
         )
     if final.body_truncated_at is not None:
         return Unreadable(
@@ -198,7 +209,7 @@ def classify(result: FetchResult, site: SiteType | None) -> Readable | Unreadabl
                     observed=str(final.body_truncated_at),
                 ),
             ),
-            actor=Actor.UNKNOWN,
+            actor=_owner_actor(site),
         )
     whole = final.body_sha256 is not None and result.body is not None
     if status is not None and (200 <= status <= 299 or status == 304) and whole:
@@ -212,7 +223,7 @@ def classify(result: FetchResult, site: SiteType | None) -> Readable | Unreadabl
         reason_code=ReasonCode.FETCH_FAILED,
         why=why,
         evidence=status_evidence,
-        actor=Actor.UNKNOWN,
+        actor=_owner_actor(site),
     )
 
 

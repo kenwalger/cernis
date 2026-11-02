@@ -79,6 +79,25 @@ uses [Semantic Versioning](https://semver.org/).
   missing required property (`og:title`, `og:type`, `og:image`, `og:url`)
   is a defect. Two new recommendation templates.
 - The README logo uses absolute PNG URLs, so it renders on PyPI.
+- The `owned` site type, for pages the author fully controls with no specific
+  extractor: the generic extractor, and actor `AUTHOR` on every finding. It
+  works in the pair map, `[[site]]` prefix rules, and `--site-type`.
+- `cernis pair --original URL --copy URL` and `cernis pairs --map FILE`: both
+  pages audited, then the pair checks; the report presents each pair as one
+  subject with both pages, and the JSON report gains `pairs`.
+- `epi.pair.canonical`, the flagship check: the copy's canonical against the
+  original's URL, and the original's against its own.
+- `epi.canonical.resolves`: each canonical URL's status and redirect chain,
+  through the normal fetcher; a defect only for 404 or 410.
+- `epi.og.image.resolves`: the og:image URL's status and content type; a
+  defect for 404, 410, or a response that is not an image. The image is never
+  stored.
+- Each distinct URL is fetched once per run, and its receipt reused.
+- `Fetcher.fetch(url, store_body=False)`, which neither reads nor writes the
+  cache.
+- `peri.og.url_matches_canonical` 2: a `DIFFERENT` defect cites the Open
+  Graph protocol, which defines `og:url` as the object's canonical URL.
+- Five recommendation templates for the epitext checks.
 
 ## [0.0.1] - 2026-10-28
 

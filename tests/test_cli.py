@@ -293,6 +293,10 @@ def _audit_site(monkeypatch: pytest.MonkeyPatch) -> list[FetchConfig]:
             {"content-type": "text/html"},
         ),
     )
+    site.add(
+        "https://dev.to/example-author/two-canonicals-5e6f",
+        respond(200, b"<html></html>", {"content-type": "text/html"}),
+    )
     return _scripted_fetcher(monkeypatch, site)
 
 
@@ -307,7 +311,7 @@ def test_audit_prints_a_markdown_report(
     out = capsys.readouterr().out
     assert code == 0
     assert out.startswith("# Cernis audit: A Post With Two Canonicals\n")
-    assert "## Observed (13)" in out
+    assert "## Observed (15)" in out
     assert "## Recommendations (1)" in out
     assert "extractor wordpress.entry 1+n1, declared" in out
 
@@ -383,7 +387,7 @@ def test_audit_reports_an_unwritable_output(
 
 
 def test_audit_rejects_an_unknown_site_type(capsys: pytest.CaptureFixture[str]) -> None:
-    """--site-type is dev or wordpress."""
+    """--site-type is dev, wordpress, or owned."""
     with pytest.raises(SystemExit) as excinfo:
         main(["audit", WP_PAGE, "--site-type", "medium"])
 
@@ -441,3 +445,185 @@ def test_audit_refuses_a_bad_pair_map(
 
     assert main(["audit", WP_PAGE, "--map", str(bad)]) == 2
     assert "format must be 1" in capsys.readouterr().err
+
+
+def test_audit_accepts_the_owned_site_type(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--site-type owned reads the page with the generic extractor, as the author's."""
+    _audit_site(monkeypatch)
+
+    main(["audit", WP_PAGE, "--site-type", "owned", "--cache-dir", str(tmp_path)])
+
+    out = capsys.readouterr().out
+    assert "extractor generic 1+n1, declared" in out
+    assert "PLATFORM" not in out
+    assert "UNKNOWN" not in out
+
+
+# cernis pair and cernis pairs
+
+ORIGINAL = "https://blog.example.com/2026/10/a-synthetic-post/"
+COPY = "https://dev.to/example-author/a-synthetic-post-1a2b"
+
+
+def _pair_site(monkeypatch: pytest.MonkeyPatch) -> Site:
+    """Serve a synthetic original and its DEV copy to the CLI.
+
+    :param monkeypatch: Used to replace the CLI's fetcher.
+    :return: The scripted web, to inspect its requests.
+    """
+    fixtures = Path(__file__).parent / "fixtures"
+    html = {"content-type": "text/html"}
+    png = {"content-type": "image/png"}
+    site = Site()
+    site.add(ORIGINAL, respond(200, (fixtures / "wordpress-entry.html").read_bytes(), html))
+    site.add(COPY, respond(200, (fixtures / "dev-article.html").read_bytes(), html))
+    site.add(
+        "https://blog.example.com/wp-content/uploads/2026/10/cover.png", respond(200, b"P", png)
+    )
+    site.add("https://media.dev.example/cover/synthetic-cover.png", respond(200, b"P", png))
+    _scripted_fetcher(monkeypatch, site)
+    return site
+
+
+def test_pair_audits_both_pages_and_the_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One report, one pair, both pages, and the pair check."""
+    _pair_site(monkeypatch)
+
+    code = main(
+        [
+            "pair",
+            "--original",
+            ORIGINAL,
+            "--copy",
+            COPY,
+            "--original-site",
+            "wordpress",
+            "--cache-dir",
+            str(tmp_path),
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert f"Copy: {COPY}\nOriginal: {ORIGINAL}\n" in out
+    assert f"### Pair: {COPY} (copy of {ORIGINAL})" in out
+    assert "epi.pair.canonical" in out
+    assert "extractor wordpress.entry 1+n1, declared" in out
+    assert "extractor dev.article 1+n1, host" in out
+
+
+def test_pair_writes_json_with_the_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The JSON report lists the pair."""
+    _pair_site(monkeypatch)
+    output = tmp_path / "pair.json"
+
+    main(
+        [
+            "pair",
+            "--original",
+            ORIGINAL,
+            "--copy",
+            COPY,
+            "--format",
+            "json",
+            "--output",
+            str(output),
+            "--cache-dir",
+            str(tmp_path / "c"),
+        ]
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["pairs"] == [{"original": ORIGINAL, "copy": COPY}]
+    assert capsys.readouterr().out == ""
+
+
+def test_pair_refuses_a_copy_that_is_the_original(capsys: pytest.CaptureFixture[str]) -> None:
+    """The same URL, up to normalization, is not a pair."""
+    assert main(["pair", "--original", ORIGINAL, "--copy", ORIGINAL.rstrip("/")]) == 2
+    assert "the copy is the same URL as the original" in capsys.readouterr().err
+
+
+def test_pair_applies_a_maps_prefix_rules(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With --map, a [[site]] prefix declares the original's type."""
+    _pair_site(monkeypatch)
+    pair_map = tmp_path / "sites.toml"
+    pair_map.write_text(
+        'format = 1\n[[site]]\nprefix = "https://blog.example.com/"\ntype = "wordpress"\n',
+        encoding="utf-8",
+    )
+
+    main(
+        [
+            "pair",
+            "--original",
+            ORIGINAL,
+            "--copy",
+            COPY,
+            "--map",
+            str(pair_map),
+            "--cache-dir",
+            str(tmp_path / "c"),
+        ]
+    )
+
+    assert "extractor wordpress.entry 1+n1, prefix" in capsys.readouterr().out
+
+
+def test_pairs_audits_every_pair_in_the_map_fetching_each_url_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two pairs that share an original fetch it once and show it once."""
+    site = _pair_site(monkeypatch)
+    second = "https://mirror.example.net/a-synthetic-post/"
+    site.add(
+        second,
+        respond(
+            200,
+            (Path(__file__).parent / "fixtures" / "wordpress-entry.html").read_bytes(),
+            {"content-type": "text/html"},
+        ),
+    )
+    pair_map = tmp_path / "pairs.toml"
+    pair_map.write_text(
+        "format = 1\n"
+        f'[[pair]]\noriginal = {{ url = "{ORIGINAL}", site = "wordpress" }}\n'
+        f'copy = {{ url = "{COPY}" }}\n'
+        f'[[pair]]\noriginal = {{ url = "{ORIGINAL}" }}\n'
+        f'copy = {{ url = "{second}", site = "owned" }}\n',
+        encoding="utf-8",
+    )
+
+    code = main(["pairs", "--map", str(pair_map), "--cache-dir", str(tmp_path / "c")])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert site.urls().count(ORIGINAL) == 1
+    assert f"- Pair 1: original {ORIGINAL}; copy {COPY}" in out
+    assert f"- Pair 2: original {ORIGINAL}; copy {second}" in out
+    # A page in two pairs is shown under the first pair only.
+    assert out.count(f"#### Original: {ORIGINAL}") == 1
+    assert f"### Pair: {second} (copy of {ORIGINAL})" in out
+    assert "extractor generic 1+n1, declared" in out
+
+
+def test_pairs_refuses_a_map_with_no_pairs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A map of [[site]] rules alone has nothing for cernis pairs to audit."""
+    pair_map = tmp_path / "sites.toml"
+    pair_map.write_text(
+        'format = 1\n[[site]]\nprefix = "https://blog.example.com/"\ntype = "wordpress"\n',
+        encoding="utf-8",
+    )
+
+    assert main(["pairs", "--map", str(pair_map)]) == 2
+    assert "has no [[pair]]" in capsys.readouterr().err

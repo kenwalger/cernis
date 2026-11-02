@@ -26,6 +26,9 @@ from cernis.report.markdown import code, escape
 GOLDEN = Path(__file__).parent / "golden"
 WORDPRESS_PAGE = "https://blog.example.com/two-canonicals/"
 GONE = "https://blog.example.com/gone/"
+SYNTHETIC_POST = "https://blog.example.com/2026/10/a-synthetic-post/"
+DEV_IMAGE = "https://media.dev.example/cover/synthetic-cover.png"
+WP_IMAGE = "https://blog.example.com/wp-content/uploads/2026/10/cover.png"
 HTML = {"content-type": "text/html; charset=utf-8"}
 
 
@@ -48,6 +51,11 @@ def golden_run(tmp_path: Path) -> Run:
     site.add(DEV_URL, respond(200, fixture("dev-article"), HTML))
     site.add(WORDPRESS_PAGE, respond(200, fixture("two-canonicals"), HTML))
     site.add(GONE, httpx.ConnectTimeout("slow"))
+    # The DEV copy's canonical and both images answer; the WordPress page's
+    # second canonical (on dev.to) is left unrouted, so it answers 404 and the
+    # goldens show an epi.canonical.resolves defect.
+    site.add(SYNTHETIC_POST, respond(200, b"<html></html>", HTML))
+    site.add(DEV_IMAGE, respond(200, b"PNG", {"content-type": "image/png"}))
     fetcher = make_fetcher(site, tmp_path, min_interval=0)
     targets = [
         Target(url=DEV_URL),
@@ -185,6 +193,8 @@ def test_an_empty_section_says_none(tmp_path: Path) -> None:
     """A page with no defects has no recommendations, and the section says so."""
     site = Site()
     site.add(WORDPRESS_PAGE, respond(200, fixture("wordpress-entry"), HTML))
+    site.add(SYNTHETIC_POST, respond(200, b"<html></html>", HTML))
+    site.add(WP_IMAGE, respond(200, b"PNG", {"content-type": "image/png"}))
     run = audit(
         [Target(url=WORDPRESS_PAGE, site=SiteType.WORDPRESS)],
         make_fetcher(site, tmp_path),

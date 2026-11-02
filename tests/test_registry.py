@@ -24,6 +24,7 @@ DESIGN_CHECK_IDS = {
 }
 
 PREFIXES = {Family.PERITEXT: "peri.", Family.EPITEXT: "epi."}
+EPITEXT_IMPLEMENTED = {"epi.pair.canonical", "epi.canonical.resolves", "epi.og.image.resolves"}
 
 
 def test_check_ids_are_unique() -> None:
@@ -44,15 +45,16 @@ def test_registry_lists_every_check_in_the_design() -> None:
 
 
 def test_peritext_checks_are_implemented_and_epitext_checks_are_not_yet() -> None:
-    """Session 4b implements the nine peritext checks; epitext checks are Phase 4.
+    """The nine peritext checks (Session 4b) and three epitext checks (Session 5a) run.
 
-    Session 4d bumped peri.lang and peri.og.core to version 2; every other
-    check is still at version 1.
+    Session 4d bumped peri.lang and peri.og.core to version 2, and Session 5a
+    peri.og.url_matches_canonical; every other check is still at version 1.
     """
-    bumped = {"peri.lang", "peri.og.core"}
+    bumped = {"peri.lang", "peri.og.core", "peri.og.url_matches_canonical"}
     for spec in CHECKS:
         assert spec.version == ("2" if spec.id in bumped else "1"), spec.id
-        assert spec.implemented is (spec.family is Family.PERITEXT), spec.id
+        implemented = spec.family is Family.PERITEXT or spec.id in EPITEXT_IMPLEMENTED
+        assert spec.implemented is implemented, spec.id
 
 
 def test_check_looks_up_by_id() -> None:

@@ -37,6 +37,9 @@ class SiteType(StrEnum):
 
     DEV = "dev"
     WORDPRESS = "wordpress"
+    OWNED = "owned"
+    """A site the author controls entirely but Cernis has no extractor for:
+    the generic extractor (no article body), and every actor is ``AUTHOR``."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -66,6 +69,7 @@ EXTRACTORS: tuple[Extractor, ...] = (DEV_ARTICLE, WORDPRESS_ENTRY, GENERIC)
 _BY_SITE: dict[SiteType | None, Extractor] = {
     SiteType.DEV: DEV_ARTICLE,
     SiteType.WORDPRESS: WORDPRESS_ENTRY,
+    SiteType.OWNED: GENERIC,
     None: GENERIC,
 }
 _SITE_BY_HOST = {"dev.to": SiteType.DEV, "www.dev.to": SiteType.DEV}

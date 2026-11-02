@@ -13,9 +13,10 @@ and ``peri.jsonld.parses`` one per block (``block 1``, ``block 2``, ...; or
 one with an empty target when there are no blocks). ``peri.canonical.absolute``
 gives none when there is no canonical, since there is nothing to assess.
 
-**Actors** (DESIGN.md section 3): on WordPress the author controls
-everything; on DEV the author controls what the front matter sets (the
-canonical URL, the description, the title and cover image behind
+**Actors** (DESIGN.md section 3): on WordPress, and on a site declared
+``owned``, the author controls everything; on DEV the author controls what
+the front matter sets (the canonical URL, the description, the title and
+cover image behind
 ``og:title``, ``og:description``, and ``og:image``) and the platform
 controls the template (``og:type``, ``og:url``, ``lang``, JSON-LD, and the
 ``<title>`` DEV builds as "<title> - DEV Community"). With no known site type, the actor
@@ -73,7 +74,7 @@ def actor_for(site: SiteType | None, check_id: str, target: str = "") -> Actor:
         JSON-LD block counts the same.
     :return: The actor.
     """
-    if site is SiteType.WORDPRESS:
+    if site in (SiteType.WORDPRESS, SiteType.OWNED):
         return Actor.AUTHOR
     if site is SiteType.DEV:
         key = (check_id, "" if check_id == "peri.jsonld.parses" else target)
@@ -438,7 +439,9 @@ def og_core(ctx: _Context) -> list[Finding]:
 def og_url_matches_canonical(ctx: _Context) -> list[Finding]:
     """``peri.og.url_matches_canonical``: the URL comparison outcome.
 
-    Defect when DIFFERENT. A relative canonical is resolved against the
+    Defect when DIFFERENT: the Open Graph protocol defines ``og:url`` as the
+    object's canonical URL, and the summary says so (version 2, Session 5a).
+    On DEV the actor is ``PLATFORM``. A relative canonical is resolved against the
     page's URL first, as a browser would. When two canonicals disagree, which
     one ``og:url`` should match cannot be told: ``NOT_DETERMINABLE``
     (``AMBIGUOUS``).
@@ -512,7 +515,10 @@ def og_url_matches_canonical(ctx: _Context) -> list[Finding]:
             reasons += f", receipt {result.receipt_id}"
         summary = f"og:url and the canonical URL are equivalent ({reasons}){note}."
     else:
-        summary = f"og:url ({og_url}) and the canonical URL ({canonical}) are different{note}."
+        summary = (
+            f"og:url ({og_url}) and the canonical URL ({canonical}) are different{note}; "
+            f"{OPEN_GRAPH} defines og:url as the object's canonical URL."
+        )
     return [ctx.observed(check_id, summary, evidence, defect=result.outcome is UrlMatch.DIFFERENT)]
 
 
