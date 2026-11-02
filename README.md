@@ -84,6 +84,18 @@ uv run cernis pair --original https://www.example.com/blog/my-post/ \
 uv run cernis pairs --map cernis-map.toml    # every [[pair]] in the map
 ```
 
+A pair in the map names one original and either one `copy` or several
+`copies`, each audited as its own pair:
+
+```toml
+[[pair]]
+original = { url = "https://www.example.com/blog/my-post/" }
+copies = [
+  { url = "https://dev.to/<user>/<article-slug>" },
+  { url = "https://coderlegion.com/<id>/<article-slug>" },
+]
+```
+
 Or let Cernis find your cross-posts: every DEV article whose canonical URL
 names a page elsewhere is paired with that page. `--list-only` shows what it
 would audit and stops:
@@ -134,9 +146,16 @@ Checks around the page (epitext):
 | `epi.sitemap.listed` | Whether the site's sitemap lists the page |
 | `epi.links.resolve` | Whether the links in the article body resolve (at most 100 per page and 5 per external host, configurable) |
 
-Every report starts with a summary of plain counts (each article's number of
-author defects, and how many articles have any) and a Site section for
-findings about the set of articles, not one page.
+Every report starts with two sections before the findings for each page:
+
+- **Summary**: plain counts, never a score. It gives each article's number of
+  author defects (defects you can fix), and how many of the audited articles
+  have at least one, such as "3 of 42".
+- **Site**: findings about the set of articles rather than one page, such as
+  several articles sharing one social image.
+
+Then come Observed, Recommendations, and Not determinable, with each
+original and copy shown together as one pair.
 
 A defect is reported only for a violation of a published standard (such as WCAG
 or the Open Graph protocol) or of the author's own stated intent, never for a

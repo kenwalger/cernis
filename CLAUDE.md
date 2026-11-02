@@ -29,18 +29,22 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **The first site-wide audit ran (session 5c, 2026-11-02).** Claim numbers fixed (DESIGN.md section 8); `wordpress.entry` 2 (share widgets excluded); site-level findings (`epi.og.image.shared`, `SITE_LEVEL` in the registry) and the report's Summary and Site sections. Real reports go in `reports/`, which is git-ignored. DESIGN.md is at draft 2.7.
 
-**Next:** the Owner reviews every defect of the first full audit by hand (C-3) before C-1 and C-3 are evaluated; then Phase 5 (DESIGN.md section 10). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**Claim results recorded (session 5d, 2026-11-02).** C-1 falsified (0 of 42 articles with an `AUTHOR` defect), C-3 holds weakly (21 of 21 defects genuine, one type), C-1b proposed; DESIGN.md section 8. The consolidated pre-0.1.0 audit list is `docs/RELEASE-AUDIT.md`. DESIGN.md is at draft 2.8.
+
+**Next:** Phase 5 (DESIGN.md section 10), which tests C-2 and C-5. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 
 1. Keep what was observed, what is recommended, and what cannot be determined apart. Every finding has a status (`OBSERVED`, `RECOMMENDATION`, `NOT_DETERMINABLE`) and, separately, an actor (`AUTHOR`, `PLATFORM`, `UNKNOWN`).
-2. No scores, grades, or summary numbers.
+2. No scores, grades, or summary numbers. The run summary gives plain counts only (each article's `AUTHOR` defects, and how many articles have any), never weighted or turned into a percentage.
 3. No predicted outcomes. A recommendation says what to change and why, never what will happen. The no-promise test makes this a build failure.
 4. A defect violates a published standard or the author's stated intent, never a style convention. Lengths are facts, not defects.
 5. Absence is evidence. A check records what it searched for, not only what it found.
 6. Findings are receipts: URL, time, response hash, evidence, and check version.
 7. Deterministic first. No model or LLM in the loop.
-8. Polite by default: the author's own content only, an honest user agent, robots.txt respected, paced requests, a cache.
+8. Polite by default: only content principle 9 allows, an honest user agent, robots.txt respected, paced requests, a cache.
+9. Audit content you are authorized to audit: your own, or a client's with their permission. Someone else's public pages only in a small, polite sample (robots.txt respected, normal pacing), for example to test claim C-1b.
+10. Facts are not defects after the fact: a claim's result never reclassifies findings to rescue the claim.
 
 ## Code standards
 
@@ -64,6 +68,10 @@ Cernis is a content discoverability auditor for published articles. Given an art
   4. `uv run pydoclint src tests`
   5. `uv run pytest`
   6. `uv run --isolated --python 3.12 pytest` (the declared floor; the project venv may run a newer Python)
+
+## Decision Engine audits
+
+An audit artifact contains real code only: the diff or the files themselves, never summaries or pseudocode. In Session 5b, six of one voice's nine findings described code that did not exist, because parts of the artifact were summarized; each had to be rejected against the real source. If an artifact is too large, audit fewer files in full rather than more files in summary.
 
 ## SDK friction
 

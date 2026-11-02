@@ -6,8 +6,17 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Everything since 0.0.1. Sessions are recorded in `docs/sessions/`; the
+pre-release review list is `docs/RELEASE-AUDIT.md`.
+
 ### Added
 
+- CI (`.github/workflows/ci.yml`): the full check list on Python 3.12, 3.13,
+  and 3.14 for every push and pull request.
+- Trusted Publishing to PyPI (`.github/workflows/publish.yml`), bound to the
+  release tag, with the wheel checked before upload; `docs/RELEASING.md`.
+- The brand: `BRAND.md`, the mark in light and dark variants, favicons, and
+  the README logo.
 - The finding and receipt model (`cernis.model`): `Status`, `Actor`,
   `ReasonCode`, and `Family` enums, and frozen `Evidence`, `Finding`, and
   `Receipt` dataclasses that enforce the status rules at construction
@@ -124,6 +133,28 @@ uses [Semantic Versioning](https://semver.org/).
 - A run summary: each article's count of AUTHOR defects, and how many
   articles have any, in the Markdown and JSON reports (`summary`,
   `counts.site`).
+
+### Changed
+
+- robots.txt matching moved from `urllib.robotparser`, whose answers differ
+  between Python versions, to Cernis's own RFC 9309 matcher.
+- The version is read from the package metadata.
+- DESIGN.md went from draft 2 to draft 2.8; claims C-1 and C-3 have results
+  (section 8), and C-1b is proposed.
+
+### Security
+
+- Non-public addresses are refused on every hop, and connections go only to
+  the screened addresses (ADR-005).
+- Bodies are decoded with bounded output, so a small compressed body cannot
+  expand past the size limit.
+- Sitemaps are parsed by expat with handlers that refuse any DOCTYPE or
+  entity declaration, in any encoding; entries per document and per site
+  are capped; index children on other hosts are not followed.
+- `--allow-loopback` is refused together with `--from-sitemap` or
+  `--from-dev-user`, and warns otherwise.
+- A DEV username must be letters, digits, and underscores before it is put
+  in a URL.
 
 ## [0.0.1] - 2026-10-28
 

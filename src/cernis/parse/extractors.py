@@ -9,7 +9,11 @@ extractor shows in history as a ``CHECKER`` change, not a page change.
   ``.wp-block-post-content`` (block themes). Version 2 (Session 5c) leaves
   out share-button containers that plugins insert into the body (Jetpack's
   ``.sharedaddy`` and the others in :data:`WORDPRESS_SHARE_CONTAINERS`), for
-  the content hash and for links alike.
+  the content hash and for links alike. Known gap (Sessions 5c and 5d): five
+  newer posts on kenwalger.com use a share container this list does not yet
+  name, so their Facebook, X, Reddit, and LinkedIn share links are still
+  read as article links. Adding it waits for its class name, and will make
+  this extractor version 3.
 - ``generic``: finds no body, ever. ``content_sha256`` is then ``None``, and
   history says ``UNCLASSIFIED`` rather than guess which part is the article.
 

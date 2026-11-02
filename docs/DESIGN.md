@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.7 (2026-11-02). Draft 2.7 records Session 5c: the claim numbers fixed in section 8, `wordpress.entry` version 2 (share widgets left out of the article body), a whole-origin `[[site]]` prefix as one sitemap section, site-level findings (`epi.og.image.shared`) and the report's Site section, and the run summary (counts of `AUTHOR` defects per article, for C-1). Draft 2.6 recorded Session 5b: `peri.robots.directives`, `epi.robots.access` with a versioned AI crawler list, `epi.sitemap.listed`, `epi.links.resolve` with its limits, the `LIMIT_REACHED` reason code (ADR-001 amendment 2), the sitemap and DEV user URL sources, `copies` in the pair map, and `cernis pairs --from-dev-user`. Draft 2.5 recorded Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.8 (2026-11-02). Draft 2.8 records Session 5d: the results of claims C-1 and C-3 from the first full audit, C-1b proposed, principles 9 and 10, and Phases 2 to 4 marked done. Draft 2.7 recorded Session 5c: the claim numbers fixed in section 8, `wordpress.entry` version 2 (share widgets left out of the article body), a whole-origin `[[site]]` prefix as one sitemap section, site-level findings (`epi.og.image.shared`) and the report's Site section, and the run summary (counts of `AUTHOR` defects per article, for C-1). Draft 2.6 recorded Session 5b: `peri.robots.directives`, `epi.robots.access` with a versioned AI crawler list, `epi.sitemap.listed`, `epi.links.resolve` with its limits, the `LIMIT_REACHED` reason code (ADR-001 amendment 2), the sitemap and DEV user URL sources, `copies` in the pair map, and `cernis pairs --from-dev-user`. Draft 2.5 recorded Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -42,7 +42,9 @@ Using the Latin pronunciation makes room for Latin elsewhere in the brand: the m
 5. **Absence is evidence.** "We looked for X in these places and found no X" is a finding in its own right. Every check records what it searched, not only what it found. This comes directly from the Discoverability Stack's "absence as a provenance category."
 6. **Findings are receipts.** Every finding records the URL fetched, the time, the response hash, the evidence, and the check version, so anyone can see exactly what Cernis saw.
 7. **Deterministic first.** The MVP has no model in the loop. Any judgment-based check, later, is a new experiment with stated claims and falsifiers, in the Afterword style.
-8. **Polite by default.** Audit your own content only, identify yourself, respect robots.txt, pace requests, cache.
+8. **Polite by default.** Audit only what principle 9 allows, identify yourself, respect robots.txt, pace requests, cache.
+9. **Audit content you are authorized to audit.** That means your own content, or a client's with their permission. Auditing someone else's public pages is limited to a small, polite sample (robots.txt respected, normal pacing, no limits raised), for example to test a claim such as C-1b in section 8.
+10. **Facts are not defects after the fact.** A claim's result never reclassifies findings to rescue the claim. A fact stays a fact and a defect stays a defect, whatever a run's result turns out to be; a change to what counts as a defect is a new check version, made for its own reasons and recorded before the run it applies to.
 
 ---
 
@@ -417,6 +419,26 @@ Written before building, in the Afterword style. The numbers were fixed on 2026-
 
 C-3 is the important one. A tool that claims to report only observed defects has to show that its observed defects are actually defects.
 
+### Results (2026-11-02)
+
+The first full audit is run `20261102T204509Z` (Session 5c): `cernis pairs --from-dev-user kenwalger --limit 25`, with kenwalger.com/blog/ declared WordPress by a prefix rule. It gave 21 cross-post pairs from the 25 most recent DEV articles, so 42 audited articles, all read whole. The claims' wording and numbers above are unchanged.
+
+| ID | Result | Notes |
+| --- | --- | --- |
+| C-1 | **Falsified** | 0 of 42 audited articles had any `AUTHOR` defect, against a threshold of 10%. Interpretation: the author's cross-posting was correct throughout (every copy names its original, every original names itself, every original is in its sitemap); the defect rule is strict by design (principle 4); and the actionable findings appeared as facts, which C-1 does not count, for example 15 of the 21 originals sharing one `og:image` (`epi.og.image.shared`). No fact was reclassified as a defect after the result (principle 10). |
+| C-2 | Not yet tested | Phase 5 tests it: history, finding keys across runs, and change classification, with 5 back-to-back runs. |
+| C-3 | **Holds, weakly** | 21 of 21 defects are genuine on the Owner's review. All 21 are one type: `peri.og.url_matches_canonical` on DEV copies, where DEV sets `og:url` (`PLATFORM`). A run with more varied defects is needed before this means much. |
+| C-4 | Not yet tested as a claim | Enforced at every run by `Run` validation (`based_on` must name an `OBSERVED` finding) and by the no-promise test on every template; Phase 6 evaluates it over the full audit's findings. |
+| C-5 | Not yet tested | Phase 5 tests it, when sovereign-ledger becomes the receipt store behind `ReceiptStore`. |
+
+### Proposed
+
+| ID | Claim | Falsified if |
+| --- | --- | --- |
+| C-1b | Deterministic checks find at least one author-actionable defect on a meaningful share of other developer-writers' published cross-posts | Fewer than 10% (*proposed*) of audited articles have any `AUTHOR` defect |
+
+C-1b is **proposed, not fixed**. Its sample size, the rule that selects its authors and articles, and its threshold must be fixed and dated here before any run. Its runs follow principle 9: a small, polite sample of public cross-posts, robots.txt respected, normal pacing.
+
 ---
 
 ## 9. Relationship to Afterword
@@ -439,10 +461,10 @@ Each phase is one or more numbered Claude Code sessions, with the usual CLAUDE.m
 | 1 | Scaffold: repo, CLAUDE.md, tooling, `model.py` with the finding and receipt types, status rules as validators, the no-promise test, `cernis checks` | Done in Session 1. Session 1b aligns the model with draft 2. |
 | 1.5 | CI on Python 3.12 to 3.14, and Trusted Publishing to PyPI | CI green on a pull request; `docs/RELEASING.md` written |
 | 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Done in Session 3. Session 3b adds the SSRF guard, the RFC 9309 matcher, and the overall request deadline. |
-| 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | `cernis audit <url>` produces a report from fixtures and from one real article |
-| 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | `cernis pairs --map` runs over all cross-posted articles. Session 5a adds the pair check, canonical and og:image resolution, `owned`, `cernis pair`, and `cernis pairs`. Session 5b adds robots access and directives, sitemaps, links, the sitemap and DEV user sources, `copies`, and `cernis pairs --from-dev-user`. |
+| 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | Done in Sessions 4a (parser, snapshots, URL comparison, sovereign-sieve evaluated), 4b (peritext checks, run, reports, `cernis audit`), and 4d (prefix site types, standards defects). |
+| 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | Done in Sessions 5a, 5b, and 5c: `cernis pairs` ran over the 21 most recent cross-posted articles in Session 5c. Session 5a adds the pair check, canonical and og:image resolution, `owned`, `cernis pair`, and `cernis pairs`. Session 5b adds robots access and directives, sitemaps, links, the sitemap and DEV user sources, `copies`, and `cernis pairs --from-dev-user`. |
 | 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass |
-| 6 | Fix the *proposed* numbers, run the first full audit, review every defect, evaluate C-1 to C-5 | An evaluation note, and material for an article. Session 5c fixed the numbers (section 8) and ran the first site-wide audit; the Owner reviews every defect before C-1 and C-3 are evaluated. |
+| 6 | Fix the *proposed* numbers, run the first full audit, review every defect, evaluate C-1 to C-5 | An evaluation note, and material for an article. Session 5c fixed the numbers (section 8) and ran the first site-wide audit; Session 5d records the results of C-1 (falsified) and C-3 (holds, weakly). C-2, C-4, and C-5 remain. |
 
 A natural first article: *Non Liquet: Building an Auditor That Admits What It Can't See.*
 
