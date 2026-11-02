@@ -38,3 +38,14 @@ The Decision Engine audit of Session 3 (`aud_K8j95M7gmH`) showed that the last c
 - `max_body_bytes` bounds both the bytes received and the bytes after decoding. Either one passing the limit ends the read, with `body_sha256` `None` and `body_truncated_at` set.
 - A cached body larger than the current limit is a cache miss, so a `304` can never bring back a body the current run would have cut off.
 - When robots.txt is cut off, its last, partial line is dropped before the rules are parsed.
+
+## Amendment 2 (2026-11-02, Session 5e): compressed bodies end where their stream ends
+
+The tier comparison (`docs/experiments/2026-11-tier-comparison.md`, findings D7, D8, D34, and D36) showed four gaps in the bounded decoding of amendment 1.
+
+- **A compressed body that ends early is not a whole body.** After the last chunk, the decoder checks that the gzip or deflate stream reached its end. One that did not (a missing gzip trailer, a cut-off deflate stream) is `CONNECTION`, with the status kept (ADR-004). It is never hashed and never cached. A body with no bytes at all is still an empty body.
+- **Every gzip member is decoded**, in order, as RFC 1952 allows. Zero padding after the last member is ignored. Anything after the end of a deflate stream does not decode.
+- **Raw deflate** (without the zlib wrapper) is told apart from the stream: until the wrapped reading has produced output, the bytes are kept and read again raw if it fails. Before, only a failing first chunk was retried, so a server that sent one byte first got `CONNECTION`.
+- **The deadline is checked as each chunk arrives**, the one that fills the limit included. Before, a chunk past the limit ended the read before the check.
+
+`max_body_bytes` still bounds both the bytes received and the bytes decoded (amendment 1). That rule was raised as finding D29 and found to be as decided.

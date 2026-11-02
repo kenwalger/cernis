@@ -220,8 +220,10 @@ class GuardedBackend(httpcore.NetworkBackend):
 class GuardedTransport(httpx.HTTPTransport):
     """httpx's transport, connecting through a :class:`GuardedBackend`.
 
-    TLS uses the system's default trust store, with nothing read from the
-    environment, as for the rest of the fetcher.
+    TLS trusts the certificate authorities in certifi's bundle, which is what
+    httpx 0.28's ``create_ssl_context`` loads, not the operating system's
+    store, and reads nothing from the environment (``SSL_CERT_FILE``,
+    ``SSL_CERT_DIR``), as for the rest of the fetcher.
 
     :param network: The run's shared state.
     :param inner_backend: The backend that opens sockets; ``None`` uses

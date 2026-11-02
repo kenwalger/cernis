@@ -40,3 +40,22 @@ What remains open:
 - Testing against a local server needs `--allow-loopback`; the localhost tests set it.
 - Every hop costs one DNS lookup before it is sent (two per new origin, counting robots.txt). The connection reuses the answer.
 - Phase 3 must report an `ADDRESS_REFUSED` receipt as `NOT_DETERMINABLE`, with the receipt as evidence of the attempt; which reason code it uses is a Phase 3 decision.
+
+## Amendment 1 (2026-11-02, Session 5e): more ranges, translation forms, and a bounded lookup
+
+The tier comparison (`docs/experiments/2026-11-tier-comparison.md`, findings D1 to D6 and D27) found ranges and forms the screen let through. The documentation ranges stay open, as decided in Session 3b (decision 4).
+
+- **IPv4, refused in addition:** IETF protocol assignments `192.0.0.0/24` (including `192.0.0.192`, a cloud metadata address; IANA marks `192.0.0.9` and `192.0.0.10` globally reachable, and refusing them too costs nothing Cernis needs), the deprecated 6to4 relay anycast `192.88.99.0/24`, benchmarking `198.18.0.0/15`, and Azure's host platform address `168.63.129.16`.
+- **IPv6, refused in addition:** local-use translation `64:ff9b:1::/48`, discard-only `100::/64`, benchmarking `2001:2::/48`, SRv6 segment identifiers `5f00::/16`, and every other address outside global unicast `2000::/3` that carries no IPv4 address.
+- **Translation forms, judged by the IPv4 inside:** the IPv4-translated form `::ffff:0:0:0/96` joins the four forms already decoded. A Teredo address (`2001::/32`) is judged by both the Teredo server and the client address it carries; either one non-public refuses it.
+- **Resolving is bounded.** The lookup runs on a daemon thread, and a host that has not resolved within `connect_timeout` is `TIMEOUT`, with nothing sent. A lookup that never returns is abandoned, not waited for.
+- **A name the resolver cannot encode** (an empty or over-long label, which `socket.getaddrinfo` refuses with `UnicodeError`) is `CONNECTION`, like any name that does not resolve.
+
+The open gaps, after this amendment:
+
+1. **A transport passed in by the caller:** unchanged.
+2. **Public addresses that lead inward:** still open. The one well-known address of this kind, Azure's `168.63.129.16`, is now refused. Any other (a NAT hairpin, a public load balancer in front of private services) cannot be told from the address.
+3. **Ports:** still open, on purpose. Cernis audits URLs the author names, which may use any port, and `--allow-loopback` tests use local servers on high ports. An allowlist of 80 and 443 would refuse legitimate sites, while what remains is an HTTP GET, with Cernis's user agent, to a public host's port.
+4. **Other IPv6 transition forms:** Teredo is closed, and so are the IPv4-translated form and the local-use translation prefix. Two forms remain open, because an address cannot reveal them: ISATAP interface identifiers (`::5efe:a.b.c.d` under any prefix), and NAT64 network-specific prefixes chosen by an operator.
+5. **Proxies:** unchanged.
+6. **The private httpx detail:** unchanged. `GuardedTransport`'s docstring now says what TLS trusts: certifi's bundle, which httpx 0.28 loads, not the operating system's store.

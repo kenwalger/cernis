@@ -191,7 +191,7 @@ class RunFetches:
         :param store_body: ``False`` to keep only the receipts (for an image).
         :return: The fetch.
         """
-        key = str(httpx.URL(url))
+        key = str(httpx.URL(url).copy_with(fragment=None))
         known = self._by_url.get(key)
         if known is not None and (not store_body or known.body is not None or not _whole(known)):
             return known

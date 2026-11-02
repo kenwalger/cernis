@@ -278,6 +278,71 @@ def test_an_oversized_robots_txt_is_applied_up_to_the_limit(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize(
+    ("status", "basis"),
+    [
+        (404, RobotsBasis.UNAVAILABLE),
+        (410, RobotsBasis.UNAVAILABLE),
+        (429, RobotsBasis.UNREACHABLE),
+    ],
+)
+def test_a_4xx_robots_txt_counts_by_its_status_even_if_its_body_fails(
+    tmp_path: Path, status: int, basis: RobotsBasis
+) -> None:
+    """RFC 9309 section 2.3.1.3: the 4xx status decides; a body that does not decode does not."""
+    site = Site()
+    site.add(ROBOTS, respond(status, b"x", {"content-encoding": "br"}))
+
+    result = make_fetcher(site, tmp_path).fetch(PAGE)
+
+    robots_receipt = result.robots_receipts[-1]  # 429 is retried
+    assert (robots_receipt.error_kind, robots_receipt.status_code) == (ErrorKind.CONNECTION, status)
+    assert result.robots[0].basis is basis
+    assert result.robots[0].allowed is (basis is RobotsBasis.UNAVAILABLE)
+
+
+def test_a_2xx_robots_txt_whose_body_fails_is_unreachable(tmp_path: Path) -> None:
+    """Rules that cannot be read are not an empty file: everything is disallowed."""
+    site = Site()
+    site.add(ROBOTS, respond(200, b"x", {"content-encoding": "br"}))
+
+    result = make_fetcher(site, tmp_path).fetch(PAGE)
+
+    assert result.robots[0].basis is RobotsBasis.UNREACHABLE
+    assert result.disallowed_url == PAGE
+
+
+@pytest.mark.parametrize("line_end", [b"\r", b"\r\n", b"\n"], ids=["CR", "CRLF", "LF"])
+def test_a_cut_off_robots_txt_keeps_its_whole_lines_whatever_ends_them(
+    tmp_path: Path, line_end: bytes
+) -> None:
+    """The matcher accepts CR, CRLF, and LF, so the cut keeps every whole line under each."""
+    site = Site()
+    rules = b"User-agent: *" + line_end + b"Disallow: /post" + line_end + b"# " + b"x" * 200
+    site.add(ROBOTS, respond(200, rules))
+
+    result = make_fetcher(site, tmp_path, max_body_bytes=100).fetch(PAGE)
+
+    assert result.robots_receipts[0].body_truncated_at == 100
+    assert result.disallowed_url == PAGE
+
+
+def test_rules_past_the_parsing_limit_are_ignored(tmp_path: Path) -> None:
+    """RFC 9309 section 2.5: only the first 500 KiB are parsed, so memory stays bounded."""
+    site = Site()
+    padding = b"# padding\n" * 60_000
+    rules = b"User-agent: *\nDisallow: /early\n" + padding + b"Disallow: /post\n"
+    site.add(ROBOTS, respond(200, rules))
+    fetcher = make_fetcher(site, tmp_path)
+
+    result = fetcher.fetch(PAGE)
+
+    assert result.robots_receipts[0].body_truncated_at is None
+    assert result.robots[0].basis is RobotsBasis.RULES
+    assert result.robots[0].allowed
+    assert fetcher.fetch("https://example.com/early").disallowed_url == "https://example.com/early"
+
+
+@pytest.mark.parametrize(
     ("url", "robots_url"),
     [
         ("https://example.com/a/b?q=1#frag", "https://example.com/robots.txt"),

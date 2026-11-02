@@ -37,6 +37,24 @@ from cernis.fetch.addresses import refusal_reason
         ("64:ff9b::a9fe:a9fe", "link-local"),
         ("2002:c0a8:0101::1", "private"),
         ("::127.0.0.1", "loopback"),
+        ("198.18.0.1", "benchmarking"),
+        ("198.19.255.254", "benchmarking"),
+        ("192.0.0.1", "IETF protocol assignments"),
+        ("192.0.0.192", "IETF protocol assignments"),
+        ("192.88.99.1", "6to4 relay anycast"),
+        ("168.63.129.16", "Azure"),
+        ("64:ff9b:1::a9fe:a9fe", "local-use IPv4/IPv6 translation"),
+        ("::ffff:0:a9fe:a9fe", "link-local"),
+        ("::ffff:0:7f00:1", "loopback"),
+        # Teredo: server 65.54.227.120, client 10.0.0.1 (stored inverted).
+        ("2001:0:4136:e378:8000:63bf:f5ff:fffe", "private"),
+        # Teredo: server 10.0.0.1, client 8.8.8.8.
+        ("2001:0:a00:1:8000:63bf:f7f7:f7f7", "private"),
+        ("100::1", "discard-only"),
+        ("2001:2::1", "benchmarking"),
+        ("5f00::1", "segment routing"),
+        ("::a:0:a9fe:a9fe", "outside global unicast"),
+        ("4000::1", "outside global unicast"),
     ],
 )
 def test_non_public_addresses_are_refused_with_a_named_reason(address: str, named: str) -> None:
@@ -63,6 +81,16 @@ def test_non_public_addresses_are_refused_with_a_named_reason(address: str, name
         "2001:db8::1",
         "::ffff:8.8.8.8",
         "2002:0808:0808::1",
+        "198.17.255.255",
+        "198.20.0.0",
+        "192.0.1.1",
+        "192.88.98.255",
+        "168.63.129.17",
+        # Teredo with a public server and a public client (8.8.8.8).
+        "2001:0:4136:e378:8000:63bf:f7f7:f7f7",
+        # Documentation ranges stay open (SESSION-03b decision 4).
+        "3fff::1",
+        "64:ff9b::808:808",
     ],
 )
 def test_public_addresses_are_allowed(address: str) -> None:

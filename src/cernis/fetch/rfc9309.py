@@ -44,8 +44,12 @@ from dataclasses import dataclass
 
 from cernis.urls import normalize_percent_encoding
 
-MATCHER_VERSION = "1"
-"""The matcher's version. Any change to how rules are matched bumps it."""
+MATCHER_VERSION = "2"
+"""The version of Cernis's robots.txt reading: which rules are read
+(:class:`~cernis.fetch.robots.RobotsPolicy`) and how they are matched. Any
+change to either bumps it. Version 2 (Session 5e): a parsing limit of
+500 KiB, a cut-off body keeps lines ended by CR, and a 4xx is unavailable
+even when its body fails."""
 
 _LINE_END = re.compile(r"\r\n|\r|\n")
 _PRODUCT_TOKEN = re.compile(r"[A-Za-z_-]+")

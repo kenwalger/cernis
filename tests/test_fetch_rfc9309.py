@@ -41,7 +41,7 @@ def allowed(text: str, token: str, path: str) -> bool:
 
 def test_the_matcher_has_its_own_version() -> None:
     """A change to matching is a CHECKER change, so the matcher carries a version."""
-    assert MATCHER_VERSION == "1"
+    assert MATCHER_VERSION == "2"
 
 
 # RFC 9309 section 5.1, the simple example

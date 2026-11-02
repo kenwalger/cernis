@@ -131,7 +131,7 @@ def test_a_malformed_list_is_rejected(text: str, message: str) -> None:
 
 def test_the_check_version_names_the_list_and_matcher_versions() -> None:
     """A change to either is a CHECKER change."""
-    assert check_version() == "1+c1+m1"
+    assert check_version() == "1+c1+m2"
 
 
 # The matcher additions
@@ -172,7 +172,7 @@ def test_named_groups_and_the_star_fallback_are_reported(tmp_path: Path) -> None
     )
     assert {f.defect for f in found.values()} == {False}
     assert {f.actor for f in found.values()} == {Actor.AUTHOR}
-    assert {f.check_version for f in found.values()} == {"1+c1+m1"}
+    assert {f.check_version for f in found.values()} == {"1+c1+m2"}
 
 
 def test_the_robots_receipt_is_reused(tmp_path: Path) -> None:

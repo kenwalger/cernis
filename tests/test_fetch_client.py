@@ -408,6 +408,24 @@ def test_a_body_slower_than_the_total_timeout_is_timeout(tmp_path: Path) -> None
     assert stream.delivered < 20
 
 
+def test_a_chunk_that_reaches_the_limit_after_the_deadline_is_timeout(tmp_path: Path) -> None:
+    """The deadline is checked for the chunk that fills the limit too, not only the others."""
+    site = Site()
+    time = FakeTime()
+    chunks = iter([0, 1000])
+
+    def late() -> None:
+        time.now += next(chunks)
+
+    stream = ChunkStream([b"a" * 10, b"b" * 200], before_chunk=late)
+    site.add(PAGE, lambda request: httpx.Response(200, stream=stream, request=request))
+
+    fetcher = make_fetcher(site, tmp_path, time, max_body_bytes=100, total_timeout=60)
+    receipt = fetcher.fetch(PAGE).receipts[0]
+
+    assert (receipt.error_kind, receipt.body_truncated_at) == (ErrorKind.TIMEOUT, None)
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -667,6 +685,22 @@ def test_requests_to_different_hosts_are_not_paced_against_each_other(tmp_path: 
     assert time.sleeps == [1.0, 1.0]
 
 
+def test_a_trailing_dot_names_the_same_host_for_pacing(tmp_path: Path) -> None:
+    """example.com. is example.com in DNS, so it waits its turn too."""
+    site = Site()
+    site.add(PAGE, respond(200))
+    site.add("https://example.com./other", respond(200))
+    time = FakeTime()
+    fetcher = make_fetcher(site, tmp_path, time)
+
+    fetcher.fetch(PAGE)
+    fetcher.fetch("https://example.com./other")
+
+    # Every request after the first waits: robots.txt, the page, the
+    # trailing-dot origin's robots.txt, then its page.
+    assert time.sleeps == [1.0, 1.0, 1.0]
+
+
 def test_pacing_interval_is_configurable(tmp_path: Path) -> None:
     """min_interval sets the gap; zero turns pacing off."""
     site = Site()
@@ -756,6 +790,65 @@ def test_the_url_is_requested_and_recorded_in_its_normalized_form(tmp_path: Path
     assert site.urls() == ["https://example.com/robots.txt"]
 
 
+def test_a_fragment_is_never_part_of_what_is_requested_or_recorded(tmp_path: Path) -> None:
+    """A fragment is not sent, so the receipt, the robots decision, and the cache omit it."""
+    site = Site()
+    site.add(PAGE, redirect("https://example.com/next#section"))
+    site.add("https://example.com/next", respond(200, b"x", {"etag": '"v1"'}))
+    fetcher = make_fetcher(site, tmp_path)
+
+    result = fetcher.fetch(PAGE + "#top")
+
+    assert result.requested_url == PAGE
+    receipt = result.receipts[0]
+    assert (receipt.requested_url, receipt.final_url) == (PAGE, "https://example.com/next")
+    assert receipt.redirect_chain == (PAGE,)
+    assert [decision.url for decision in result.robots] == [PAGE, "https://example.com/next"]
+    assert all("#" not in url for url in site.urls())
+
+
+# store_body=False
+
+
+def _cached(tmp_path: Path) -> int:
+    """Count the files in a cache directory.
+
+    :param tmp_path: The cache directory.
+    :return: How many files it holds.
+    """
+    return sum(1 for path in tmp_path.rglob("*") if path.is_file())
+
+
+def test_without_storing_the_resource_its_robots_txt_is_still_cached(tmp_path: Path) -> None:
+    """store_body=False is about the resource; its origin's robots.txt uses the cache as usual."""
+    site = Site()
+    site.add("https://example.com/robots.txt", respond(200, b"User-agent: *\n", {"etag": '"r1"'}))
+    site.add(PAGE, respond(200, b"image", {"etag": '"p1"'}))
+
+    make_fetcher(site, tmp_path).fetch(PAGE, store_body=False)
+    site.requests.clear()
+    make_fetcher(site, tmp_path).fetch(PAGE, store_body=False)
+
+    robots_request, page_request = site.requests
+    assert robots_request.headers.get("if-none-match") == '"r1"'
+    assert page_request.headers.get("if-none-match") is None
+
+
+def test_without_storing_neither_the_resource_nor_its_redirect_target_is_cached(
+    tmp_path: Path,
+) -> None:
+    """The resource is never stored, wherever it redirects; the result carries no body."""
+    site = Site()
+    site.add(PAGE, redirect("https://cdn.example/image.png"))
+    site.add("https://cdn.example/image.png", respond(200, b"image", {"etag": '"i1"'}))
+
+    result = make_fetcher(site, tmp_path).fetch(PAGE, store_body=False)
+
+    assert result.body is None
+    assert result.receipts[0].status_code == 200
+    assert _cached(tmp_path) == 0
+
+
 # Content coding
 
 
@@ -777,6 +870,28 @@ def test_a_deflate_body_is_decoded_wrapped_or_raw(tmp_path: Path, wbits: int) ->
     data = compressor.compress(b"hello") + compressor.flush()
     site = Site()
     site.add(PAGE, respond(200, data, {"content-encoding": "deflate"}))
+
+    assert make_fetcher(site, tmp_path).fetch(PAGE).body == b"hello"
+
+
+@pytest.mark.parametrize("wbits", [zlib.MAX_WBITS, -zlib.MAX_WBITS])
+@pytest.mark.parametrize("split", [1, 2, 3])
+def test_a_deflate_body_trickled_from_its_first_byte_is_decoded(
+    tmp_path: Path, wbits: int, split: int
+) -> None:
+    """Raw or wrapped is told apart from the stream, not from the first chunk alone."""
+    compressor = zlib.compressobj(wbits=wbits)
+    data = compressor.compress(b"hello") + compressor.flush()
+    site = Site()
+    site.add(
+        PAGE,
+        lambda request: httpx.Response(
+            200,
+            stream=ChunkStream([data[:split], data[split:]]),
+            headers={"content-encoding": "deflate"},
+            request=request,
+        ),
+    )
 
     assert make_fetcher(site, tmp_path).fetch(PAGE).body == b"hello"
 
@@ -816,6 +931,86 @@ def test_a_corrupt_gzip_body_is_unreadable(tmp_path: Path) -> None:
     receipt = make_fetcher(site, tmp_path).fetch(PAGE).receipts[0]
 
     assert (receipt.error_kind, receipt.status_code) == (ErrorKind.CONNECTION, 200)
+
+
+_TEXT = b"User-agent: *\nDisallow: /secret\n" * 50
+
+
+@pytest.mark.parametrize(
+    ("coding", "data"),
+    [
+        ("gzip", gzip.compress(_TEXT)[:-20]),
+        ("gzip", gzip.compress(_TEXT)[:-8]),
+        ("deflate", zlib.compress(_TEXT)[:-6]),
+    ],
+    ids=["gzip-cut", "gzip-without-trailer", "deflate-cut"],
+)
+def test_a_compressed_body_that_ends_early_is_unreadable(
+    tmp_path: Path, coding: str, data: bytes
+) -> None:
+    """A stream that stops before its end is CONNECTION, never a whole body with a hash."""
+    site = Site()
+    site.add(PAGE, respond(200, data, {"content-encoding": coding, "etag": '"v1"'}))
+
+    result = make_fetcher(site, tmp_path).fetch(PAGE)
+
+    receipt = result.receipts[0]
+    assert (receipt.error_kind, receipt.status_code, receipt.body_sha256) == (
+        ErrorKind.CONNECTION,
+        200,
+        None,
+    )
+    assert not any(path.is_file() for path in tmp_path.rglob("*"))
+
+
+def test_an_empty_body_with_a_content_coding_is_empty(tmp_path: Path) -> None:
+    """No bytes at all is an empty body, not a stream that ended early."""
+    site = Site()
+    site.add(PAGE, respond(200, b"", {"content-encoding": "gzip"}))
+
+    receipt = make_fetcher(site, tmp_path).fetch(PAGE).receipts[0]
+
+    assert (receipt.error_kind, receipt.body_sha256) == (ErrorKind.NONE, sha(b""))
+
+
+def test_every_gzip_member_is_decoded(tmp_path: Path) -> None:
+    """RFC 1952 allows several members; the body is all of them, in order."""
+    site = Site()
+    body = gzip.compress(b"first ") + gzip.compress(b"second")
+    site.add(PAGE, respond(200, body, {"content-encoding": "gzip"}))
+
+    result = make_fetcher(site, tmp_path).fetch(PAGE)
+
+    assert result.body == b"first second"
+    assert result.receipts[0].body_sha256 == sha(b"first second")
+
+
+def test_a_gzip_member_split_across_chunks_is_decoded(tmp_path: Path) -> None:
+    """A second member that starts in a later chunk is still read."""
+    first, second = gzip.compress(b"first "), gzip.compress(b"second")
+    site = Site()
+    site.add(
+        PAGE,
+        lambda request: httpx.Response(
+            200,
+            stream=ChunkStream([first, second[:5], second[5:]]),
+            headers={"content-encoding": "gzip"},
+            request=request,
+        ),
+    )
+
+    assert make_fetcher(site, tmp_path).fetch(PAGE).body == b"first second"
+
+
+def test_robots_rules_in_a_second_gzip_member_apply(tmp_path: Path) -> None:
+    """A robots.txt split over two gzip members keeps the second member's rules."""
+    site = Site()
+    robots = gzip.compress(b"User-agent: *\n") + gzip.compress(b"Disallow: /secret\n")
+    site.add("https://example.com/robots.txt", respond(200, robots, {"content-encoding": "gzip"}))
+
+    result = make_fetcher(site, tmp_path).fetch("https://example.com/secret")
+
+    assert result.disallowed_url == "https://example.com/secret"
 
 
 def test_only_gzip_and_deflate_are_offered(tmp_path: Path) -> None:

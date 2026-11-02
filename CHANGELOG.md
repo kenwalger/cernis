@@ -139,13 +139,28 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 - robots.txt matching moved from `urllib.robotparser`, whose answers differ
   between Python versions, to Cernis's own RFC 9309 matcher.
 - The version is read from the package metadata.
-- DESIGN.md went from draft 2 to draft 2.8; claims C-1 and C-3 have results
+- DESIGN.md went from draft 2 to draft 2.9; claims C-1 and C-3 have results
   (section 8), and C-1b is proposed.
+- robots.txt reading is version 2 (`epi.robots.access` 1+c1+m2): only the
+  first 500 KiB are parsed, a cut-off body keeps lines ended by CR, and a
+  4xx answer allows everything even when its body then fails to decode.
+- A fetch records and requests URLs without their fragment, and the run
+  reuses one fetch for URLs that differ only by fragment.
+- Every gzip member is decoded; raw deflate is recognized however the first
+  bytes are split; a compressed body that ends early is `CONNECTION`.
+- `store_body=False` no longer keeps the resource's robots.txt out of the
+  cache.
+- A trailing dot in a host no longer escapes pacing.
 
 ### Security
 
 - Non-public addresses are refused on every hop, and connections go only to
-  the screened addresses (ADR-005).
+  the screened addresses (ADR-005). Session 5e (ADR-005 amendment 1) added
+  benchmarking, protocol-assignment, and 6to4 relay ranges, Azure's host
+  address, every IPv6 address outside global unicast that carries no IPv4,
+  and the IPv4 inside IPv4-translated and Teredo addresses.
+- Resolving a host is bounded by `connect_timeout`, and a name the resolver
+  cannot encode is `CONNECTION`, not a crash.
 - Bodies are decoded with bounded output, so a small compressed body cannot
   expand past the size limit.
 - Sitemaps are parsed by expat with handlers that refuse any DOCTYPE or

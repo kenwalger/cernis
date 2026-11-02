@@ -31,6 +31,8 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Claim results recorded (session 5d, 2026-11-02).** C-1 falsified (0 of 42 articles with an `AUTHOR` defect), C-3 holds weakly (21 of 21 defects genuine, one type), C-1b proposed; DESIGN.md section 8. The consolidated pre-0.1.0 audit list is `docs/RELEASE-AUDIT.md`. DESIGN.md is at draft 2.8.
 
+**Network-safety fixes (session 5e, 2026-11-02).** 24 of the 28 real findings from the tier comparison (`docs/experiments/2026-11-tier-comparison.md`) are fixed, 4 deferred: more refused ranges and IPv6 translation forms (ADR-005 amendment 1), a bounded DNS lookup, complete-stream and multi-member decoding (ADR-003 amendment 2), robots.txt reading version 2 (`MATCHER_VERSION` 2: a 500 KiB parsing limit), fragments never requested, and tests for the network layer's deadline and TLS paths. DESIGN.md is at draft 2.9.
+
 **Next:** Phase 5 (DESIGN.md section 10), which tests C-2 and C-5. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)

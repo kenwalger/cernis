@@ -4,13 +4,18 @@ Everything the session records set aside for review before 0.1.0 is tagged, in o
 
 The session records' own lists are not rewritten; this file supersedes them as the working list. Mark an item done here with the session that reviewed it.
 
+**Session 5e (2026-11-02)** fixed 24 of the 28 real findings from the tier comparison of the network-safety code (`docs/experiments/2026-11-tier-comparison.md`, `docs/sessions/SESSION-05e.md`). The bounded-decoding half of item 5 is done and removed. The other items here are wider than those findings, so each stays, with a note on what was fixed and what remains.
+
 ## 1. Network safety: what Cernis fetches, and from where
 
 1. **The address screen and its gaps** (ADR-005): the range lists against the current IANA special-purpose registries, embedded-IPv4 decoding, the decision to leave documentation ranges open, and the six gaps the ADR names (caller-supplied transports, public addresses that lead inward, ports, Teredo and other transition forms, proxies, and the private `_pool` replacement). *SESSION-03b #1*
+   *Session 5e:* the ranges the tier comparison named were added (ADR-005 amendment 1), and the IPv4-translated and Teredo forms are decoded. The documentation ranges stay open. Still to review: the lists against the current IANA registries themselves (not consulted in Session 5e), and gaps 1, 2 (beyond Azure's address), 3 (kept open on purpose), 4 (ISATAP and operator NAT64 prefixes), 5, and 6. Also open: integer and hex IPv4 host forms against the real resolver (finding D23, deferred).
 2. **Pinning and the network backend** (`network.py`): every connection httpcore opens goes through `GuardedBackend.connect_tcp`; keep-alive reuse cannot carry a connection to an unscreened address; TLS verification still uses the hostname; the `_pool` replacement keeps httpx's TLS defaults. *SESSION-03b #2*
+   *Session 5e:* tests now cover a successful pinned HTTPS handshake given the hostname, IPv6 pins, the Unix-socket refusal, and the transport refusal on a new fetcher; the TLS trust store is documented as certifi's. Still to review: keep-alive reuse, and the discarded parent pool (finding D26, deferred).
 3. **URLs that come from content**, end to end: canonicals, `og:image`, article-body links, sitemap documents and their index children, robots.txt `Sitemap:` lines, and the DEV API. Check each against a hostile site: the address screen on every hop, robots.txt, pacing, the caps, IDN hosts, `data:` and other non-http values, and DESIGN.md section 6 and principle 9 on what Cernis may fetch. *SESSION-05a #22, SESSION-05b #28*
 4. **The deadline**: whether any httpcore operation escapes the wrapped stream (connection-pool waits, HTTP/2 if it is ever enabled), and how it interacts with `read_timeout`, `connect_timeout`, and pacing. *SESSION-03b #3*
-5. **Bounded decoding and the cache**, fixed after the Session 3 audit and never re-audited under the one-audit rule: gzip and deflate decoding with bounded output, the cache's bounded reads and its trust model, and `store_body=False` (neither reads nor writes the cache; the body limit still applies). *SESSION-03b #6, SESSION-05a #26*
+   *Session 5e:* resolving is bounded by `connect_timeout`; the deadline is checked for every chunk; tests cover reads, connects across pinned addresses, the TLS handshake, and a trickled body. Still open: a budget for a whole fetch (finding D33, deferred: a design decision).
+5. **The cache**, never re-audited under the one-audit rule: its bounded reads and its trust model, and `store_body=False` (neither reads nor writes the cache for the resource and its redirect targets; robots.txt still uses it; the body limit still applies). Bounded decoding, the other half of this item, was audited in the tier comparison and fixed in Session 5e. *SESSION-03b #6, SESSION-05a #26*
 
 ## 2. Untrusted input Cernis parses
 
@@ -21,6 +26,7 @@ The session records' own lists are not rewritten; this file supersedes them as t
 ## 3. robots.txt
 
 9. **The RFC 9309 matcher** against the RFC's full text, not only its examples: group boundaries, product-token extraction, percent-encoding normalization (including invalid sequences and non-UTF-8 bodies), the octet-length rule for patterns with `*` and `$`, ignoring non-path patterns, and the `Sitemap:` collection and `names()` added in Session 5b. *SESSION-03b #4*
+   *Session 5e:* reading is version 2: a 500 KiB parsing limit, a cut-off body keeps lines ended by CR, and a 4xx is unavailable even when its body fails. The product-token rule was challenged in the tier comparison and found to follow RFC 9309 section 2.2.1 (findings D10, D11). The rest of the review remains.
 10. **robots.txt redirects** restricted to `/robots.txt`, and URL normalization before the robots check (Session 3 audit fixes, never re-audited). *SESSION-03b #6*
 11. **The AI crawler list**: re-verify each token against its operator's source at release, and decide whether Bytespider can be confirmed. *SESSION-05b #30*
 

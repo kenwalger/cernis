@@ -7,9 +7,11 @@ How the robots.txt response is read (RFC 9309 section 2.3.1):
 
 - ``2xx``, or a ``304`` validating a cached copy: the rules are parsed by
   Cernis's own matcher (:mod:`cernis.fetch.rfc9309`) and applied to
-  Cernis's product token.
+  Cernis's product token. A ``2xx`` whose body could not be read is
+  unreachable, below.
 - ``4xx`` other than ``429``: robots.txt is unavailable, so everything is
-  allowed (section 2.3.1.3).
+  allowed (section 2.3.1.3). The status decides, even if reading the body
+  then failed.
 - ``5xx``, ``429``, any fetch with no response, and any other status:
   robots.txt is unreachable, so everything is disallowed (section 2.3.1.4).
   RFC 9309 counts ``429`` as a 4xx; Cernis departs from it here on purpose,
@@ -17,6 +19,11 @@ How the robots.txt response is read (RFC 9309 section 2.3.1):
 
 Rules are matched against the path and query exactly as the request sends
 them: the URL in httpx's normalized form, still percent-encoded.
+
+Only the first :data:`PARSE_LIMIT` bytes are parsed (RFC 9309 section 2.5
+allows any limit of at least 500 KiB), so a large robots.txt cannot hold
+much memory for the rest of a run. A body cut off by the fetcher's size
+limit, or by this one, loses its last, partial line.
 """
 
 from dataclasses import dataclass
@@ -26,6 +33,9 @@ import httpx
 
 from cernis.fetch.rfc9309 import MATCHER_VERSION, RobotsRules
 from cernis.model import ErrorKind, Receipt
+
+PARSE_LIMIT = 500 * 1024
+"""The most bytes of a robots.txt that are parsed (RFC 9309 section 2.5)."""
 
 
 class RobotsBasis(StrEnum):
@@ -99,18 +109,21 @@ class RobotsPolicy:
         self.receipt = receipt
         self._rules: RobotsRules | None = None
         status = receipt.status_code
-        if receipt.error_kind is not ErrorKind.NONE or status is None:
+        if status is not None and 400 <= status <= 499 and status != 429:
+            # The status decides, even when the body then failed (ADR-004 keeps it).
+            self.basis = RobotsBasis.UNAVAILABLE
+        elif receipt.error_kind is not ErrorKind.NONE or status is None:
             self.basis = RobotsBasis.UNREACHABLE
         elif 200 <= status <= 299 or (status == 304 and body is not None):
             self.basis = RobotsBasis.RULES
             rules = body or b""
-            if receipt.body_truncated_at is not None:
-                # The last line was cut off at the limit; a partial rule is not a rule.
-                rules = rules[: rules.rfind(b"\n") + 1]
+            if receipt.body_truncated_at is not None or len(rules) > PARSE_LIMIT:
+                # The last line was cut off at a limit; a partial rule is not a rule.
+                # Lines end in LF, CR, or CRLF, as the matcher reads them.
+                rules = rules[:PARSE_LIMIT]
+                rules = rules[: max(rules.rfind(b"\n"), rules.rfind(b"\r")) + 1]
             text = rules.decode("utf-8", errors="replace").removeprefix("﻿")
             self._rules = RobotsRules.parse(text)
-        elif 400 <= status <= 499 and status != 429:
-            self.basis = RobotsBasis.UNAVAILABLE
         else:
             self.basis = RobotsBasis.UNREACHABLE
 

@@ -7,8 +7,11 @@ than taken from :mod:`ipaddress`'s ``is_private`` and ``is_global``, whose
 answers have changed between Python versions.
 
 An IPv6 address that embeds an IPv4 address (IPv4-mapped ``::ffff:0:0/96``,
-IPv4-compatible ``::/96``, NAT64 ``64:ff9b::/96``, and 6to4 ``2002::/16``)
-is judged by the IPv4 address inside it.
+IPv4-compatible ``::/96``, IPv4-translated ``::ffff:0:0:0/96``, NAT64
+``64:ff9b::/96``, and 6to4 ``2002::/16``) is judged by the IPv4 address
+inside it; a Teredo address (``2001::/32``) by both the server and the client
+address it carries. Any other IPv6 address outside global unicast
+(``2000::/3``) is refused.
 """
 
 import ipaddress
@@ -21,9 +24,13 @@ _REFUSED_V4: tuple[tuple[ipaddress.IPv4Network, str], ...] = (
     (IPv4("10.0.0.0/8"), "private (RFC 1918, 10.0.0.0/8)"),
     (IPv4("100.64.0.0/10"), "carrier-grade NAT (100.64.0.0/10)"),
     (IPv4("127.0.0.0/8"), "loopback (127.0.0.0/8)"),
+    (IPv4("168.63.129.16/32"), "the Azure host platform address (168.63.129.16)"),
     (IPv4("169.254.0.0/16"), "link-local, including cloud metadata (169.254.0.0/16)"),
     (IPv4("172.16.0.0/12"), "private (RFC 1918, 172.16.0.0/12)"),
+    (IPv4("192.0.0.0/24"), "IETF protocol assignments (192.0.0.0/24)"),
+    (IPv4("192.88.99.0/24"), "6to4 relay anycast, deprecated (192.88.99.0/24)"),
     (IPv4("192.168.0.0/16"), "private (RFC 1918, 192.168.0.0/16)"),
+    (IPv4("198.18.0.0/15"), "benchmarking (198.18.0.0/15)"),
     (IPv4("224.0.0.0/4"), "multicast (224.0.0.0/4)"),
     (IPv4("255.255.255.255/32"), "broadcast (255.255.255.255)"),
     (IPv4("240.0.0.0/4"), "reserved (240.0.0.0/4)"),
@@ -32,6 +39,10 @@ _REFUSED_V4: tuple[tuple[ipaddress.IPv4Network, str], ...] = (
 _REFUSED_V6: tuple[tuple[ipaddress.IPv6Network, str], ...] = (
     (IPv6("::/128"), "unspecified (::)"),
     (IPv6("::1/128"), "loopback (::1)"),
+    (IPv6("64:ff9b:1::/48"), "local-use IPv4/IPv6 translation (64:ff9b:1::/48)"),
+    (IPv6("100::/64"), "discard-only (100::/64)"),
+    (IPv6("2001:2::/48"), "benchmarking (2001:2::/48)"),
+    (IPv6("5f00::/16"), "SRv6 segment routing identifiers (5f00::/16)"),
     (IPv6("fc00::/7"), "unique local (fc00::/7)"),
     (IPv6("fe80::/10"), "link-local (fe80::/10)"),
     (IPv6("fec0::/10"), "site-local (fec0::/10)"),
@@ -40,20 +51,44 @@ _REFUSED_V6: tuple[tuple[ipaddress.IPv6Network, str], ...] = (
 
 _LOOPBACK_V4 = IPv4("127.0.0.0/8")
 _LOOPBACK_V6 = IPv6("::1/128")
+_GLOBAL_UNICAST = IPv6("2000::/3")
 _MAPPED = IPv6("::ffff:0:0/96")
+_TRANSLATED = IPv6("::ffff:0:0:0/96")
 _COMPATIBLE = IPv6("::/96")
 _NAT64 = IPv6("64:ff9b::/96")
 
 
-def _embedded_ipv4(address: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
-    """Return the IPv4 address an IPv6 address carries, if it carries one.
+def _embedded_ipv4(address: ipaddress.IPv6Address) -> tuple[ipaddress.IPv4Address, ...]:
+    """Return the IPv4 addresses an IPv6 address carries, if it carries any.
 
     :param address: The IPv6 address.
-    :return: The embedded IPv4 address, or ``None``.
+    :return: The embedded IPv4 addresses: the server and the client for
+        Teredo, one address for the other forms, none otherwise.
     """
-    if address in _MAPPED or address in _NAT64 or address in _COMPATIBLE:
-        return ipaddress.IPv4Address(int(address) & 0xFFFFFFFF)
-    return address.sixtofour
+    if any(address in network for network in (_MAPPED, _TRANSLATED, _NAT64, _COMPATIBLE)):
+        return (ipaddress.IPv4Address(int(address) & 0xFFFFFFFF),)
+    if address.teredo is not None:
+        return address.teredo
+    return () if address.sixtofour is None else (address.sixtofour,)
+
+
+def _ipv4_reason(
+    checked: ipaddress.IPv4Address, address: str, *, allow_loopback: bool
+) -> str | None:
+    """Say why Cernis will not connect to an IPv4 address, if it will not.
+
+    :param checked: The IPv4 address to judge: the address itself, or one
+        an IPv6 address carries.
+    :param address: The address as given, for the reason.
+    :param allow_loopback: Whether loopback addresses are allowed.
+    :return: The reason, or ``None`` if the address is public.
+    """
+    if checked in _LOOPBACK_V4:
+        return None if allow_loopback else f"{address} is loopback (127.0.0.0/8)"
+    for network, kind in _REFUSED_V4:
+        if checked in network:
+            return f"{address} is {kind}"
+    return None
 
 
 def refusal_reason(address: str, *, allow_loopback: bool) -> str | None:
@@ -70,20 +105,20 @@ def refusal_reason(address: str, *, allow_loopback: bool) -> str | None:
         parsed = ipaddress.ip_address(address.split("%", 1)[0])
     except ValueError:
         return f"{address!r} is not an IP address"
-    checked: ipaddress.IPv4Address | ipaddress.IPv6Address = parsed
-    if isinstance(parsed, ipaddress.IPv6Address):
-        if parsed in _LOOPBACK_V6:
-            return None if allow_loopback else f"{address} is loopback (::1)"
-        for network, kind in _REFUSED_V6:
-            if parsed in network:
-                return f"{address} is {kind}"
-        embedded = _embedded_ipv4(parsed)
-        if embedded is None:
-            return None
-        checked = embedded
-    if checked in _LOOPBACK_V4:
-        return None if allow_loopback else f"{address} is loopback (127.0.0.0/8)"
-    for network4, kind in _REFUSED_V4:
-        if checked in network4:
+    if isinstance(parsed, ipaddress.IPv4Address):
+        return _ipv4_reason(parsed, address, allow_loopback=allow_loopback)
+    if parsed in _LOOPBACK_V6:
+        return None if allow_loopback else f"{address} is loopback (::1)"
+    for network, kind in _REFUSED_V6:
+        if parsed in network:
             return f"{address} is {kind}"
+    embedded = _embedded_ipv4(parsed)
+    if not embedded:
+        return (
+            None if parsed in _GLOBAL_UNICAST else f"{address} is outside global unicast (2000::/3)"
+        )
+    for inner in embedded:
+        reason = _ipv4_reason(inner, address, allow_loopback=allow_loopback)
+        if reason is not None:
+            return reason
     return None

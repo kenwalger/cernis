@@ -16,8 +16,9 @@ Nothing is parsed here except robots.txt.
   only to another ``/robots.txt``; any other target is not requested.
 - **URLs** are requested, checked against robots.txt, and recorded in the
   normalized form httpx sends (host lowercased, dot segments removed,
-  percent-encoding applied), so the check and the receipt name the resource
-  actually requested.
+  percent-encoding applied, and no fragment, which is never sent), so the
+  check and the receipt name the resource actually requested. A redirect
+  target loses its fragment too.
 - **Retries**: an attempt that ends in ``429`` or ``503`` is retried from the
   requested URL, up to ``max_attempts`` attempts in all. The wait is the
   ``Retry-After`` value when there is a usable one, otherwise
@@ -28,10 +29,12 @@ Nothing is parsed here except robots.txt.
   received and the bytes after decoding. A longer body is not read further;
   its receipt has no hash and records the limit (ADR-003). Cernis offers only
   ``gzip`` and ``deflate`` and decodes them itself, with bounded output, so a
-  small compressed body cannot expand past the limit. The hash is of the
-  decoded body.
+  small compressed body cannot expand past the limit. Every gzip member is
+  decoded, in order; a compressed body that ends before its stream does (a
+  missing gzip trailer, a cut-off deflate stream) is ``CONNECTION``, never a
+  whole body. The hash is of the decoded body.
 - **Errors**: a timeout (including ``total_timeout`` for one request, checked
-  when the headers arrive and after each chunk of body) is ``TIMEOUT``; a
+  when the headers arrive and as each chunk of body arrives) is ``TIMEOUT``; a
   failure whose cause is an :class:`ssl.SSLError` is ``TLS``; any other
   failure to get or read a response, including a body in a coding Cernis did
   not offer or that does not decode, is ``CONNECTION``. The receipt names
@@ -46,9 +49,12 @@ Nothing is parsed here except robots.txt.
   ``allow_loopback`` opens loopback only, for testing.
 - **Deadline**: ``total_timeout`` bounds the whole request, headers
   included; with the default transport every socket read and write is held
-  to the time left.
+  to the time left. Resolving the host, which comes before the request, is
+  bounded separately by ``connect_timeout``; a lookup that takes longer is
+  ``TIMEOUT``, and nothing is sent.
 - **Pacing**: at most one request per ``min_interval`` seconds per host,
-  counting robots.txt and every redirect hop.
+  counting robots.txt and every redirect hop. A trailing dot does not make
+  another host (``example.com.`` is ``example.com``).
 - **Cache**: a ``200`` with an ``ETag`` or ``Last-Modified`` is cached, and
   the next request for that URL is conditional. A ``304`` is recorded as
   such, with the cached body's hash.
@@ -61,9 +67,10 @@ import hashlib
 import http.cookiejar
 import re
 import ssl
+import threading
 import time
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -111,10 +118,15 @@ class FetchError(ValueError):
 class FetchConfig:
     """Settings for a :class:`Fetcher`. The defaults are the polite ones.
 
-    :param connect_timeout: Seconds to wait for a connection.
+    :param connect_timeout: Seconds to wait for a connection, and, before
+        that, for the host to resolve.
     :param read_timeout: Seconds to wait for each read from the server.
     :param total_timeout: Seconds one request may take, from sending it to
-        the end of its body, so a server that sends slowly cannot hold a run.
+        the end of its body, so a server that sends slowly cannot hold a
+        request open. It bounds each request, not a whole fetch: one fetch
+        makes up to ``max_attempts`` attempts of up to ``max_redirects + 1``
+        requests each, plus a robots.txt fetch for each new origin, and
+        each request has its own deadline.
     :param max_body_bytes: The most body bytes read from one response.
     :param max_redirects: The most redirects followed in one attempt.
     :param min_interval: The minimum seconds between requests to one host.
@@ -330,6 +342,10 @@ class _BodyDecoder:
         elif self._coding == "deflate":
             self._inflater = zlib.decompressobj(zlib.MAX_WBITS)
         self._fed = False
+        # Deflate may be raw (no zlib wrapper) until the wrapped reading has
+        # produced output; until then every byte is kept, to read again raw.
+        self._raw_possible = self._coding == "deflate"
+        self._received = bytearray()
 
     def feed(self, data: bytes, room: int) -> bytes:
         """Decode the next received bytes.
@@ -341,18 +357,59 @@ class _BodyDecoder:
         """
         if self._inflater is None:
             return data[:room]
-        first, self._fed = not self._fed, True
+        if not data:
+            return b""
+        self._fed = True
+        if self._raw_possible:
+            self._received += data
         try:
-            return self._inflater.decompress(data, room)
+            out = self._decode(data, room)
         except zlib.error as exc:
-            if not (first and self._coding == "deflate"):
+            if not self._raw_possible:
                 raise _UnreadableBodyError(str(exc)) from exc
-        # Some servers send raw deflate without the zlib wrapper.
-        self._inflater = zlib.decompressobj(-zlib.MAX_WBITS)
-        try:
-            return self._inflater.decompress(data, room)
-        except zlib.error as exc:
-            raise _UnreadableBodyError(str(exc)) from exc
+            # Some servers send raw deflate without the zlib wrapper.
+            self._raw_possible = False
+            self._inflater = zlib.decompressobj(-zlib.MAX_WBITS)
+            try:
+                return self._decode(bytes(self._received), room)
+            except zlib.error as raw_exc:
+                raise _UnreadableBodyError(str(raw_exc)) from raw_exc
+        if out:
+            self._raw_possible = False
+            self._received = bytearray()
+        return out
+
+    def _decode(self, data: bytes, room: int) -> bytes:
+        """Inflate bytes, starting a new gzip member wherever one ends.
+
+        :param data: Bytes as received; not empty.
+        :param room: The most decoded bytes to return; at least 1.
+        :return: Decoded bytes, at most ``room`` of them.
+        :raises zlib.error: If the bytes do not decode, or anything follows
+            the end of a deflate stream.
+        """
+        out = b""
+        while data and len(out) < room:
+            inflater = self._inflater
+            assert inflater is not None  # feed returns early without one
+            if inflater.eof:
+                if self._coding == "deflate":
+                    raise zlib.error("data after the end of the deflate stream")
+                if not data.strip(b"\0"):
+                    break  # zero padding after the last gzip member
+                inflater = self._inflater = zlib.decompressobj(zlib.MAX_WBITS | 16)
+            out += inflater.decompress(data, room - len(out))
+            data = inflater.unused_data if inflater.eof else b""
+        return out
+
+    def finish(self) -> None:
+        """Check that a compressed body ended where its stream does.
+
+        :raises _UnreadableBodyError: If bytes arrived and the stream stopped
+            before its end (a missing gzip trailer, a cut-off deflate stream).
+        """
+        if self._inflater is not None and self._fed and not self._inflater.eof:
+            raise _UnreadableBodyError("the compressed body ended before its stream did")
 
 
 def url_problem(url: str) -> str | None:
@@ -389,7 +446,7 @@ def _redirect_target(current: str, locations: tuple[str, ...]) -> str | None:
         return None
     if target.scheme not in ("http", "https") or not target.host or target.userinfo:
         return None
-    return str(target)
+    return str(target.copy_with(fragment=None))
 
 
 def _is_robots_url(url: str) -> bool:
@@ -430,6 +487,43 @@ def _is_tls_failure(exc: BaseException) -> bool:
         seen.add(id(current))
         current = current.__cause__ or current.__context__
     return False
+
+
+def _resolve_in_time(resolve: Resolver, host: str, port: int, timeout: float) -> tuple[str, ...]:
+    """Resolve a host, waiting at most ``timeout`` seconds.
+
+    The system resolver cannot be interrupted, so the lookup runs on a daemon
+    thread; one that never answers is abandoned, not waited for.
+
+    :param resolve: The resolver.
+    :param host: The host.
+    :param port: The port.
+    :param timeout: The most seconds to wait.
+    :return: The addresses.
+    :raises TimeoutError: If the resolver has not answered in time.
+    :raises failure: The resolver's own failure, such as an :class:`OSError`
+        for a name that does not exist, raised again on this thread.
+    """
+    outcome: list[Sequence[str] | Exception] = []
+    done = threading.Event()
+
+    def run() -> None:
+        try:
+            outcome.append(resolve(host, port))
+        except Exception as exc:  # aqg: top-level boundary
+            # Handed back to the caller's thread, which re-raises it.
+            outcome.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=run, name="cernis-resolve", daemon=True).start()
+    if not done.wait(timeout):
+        raise TimeoutError(f"resolving {host} took longer than {timeout} s")
+    answer = outcome[0]
+    if isinstance(answer, Exception):
+        failure = answer
+        raise failure
+    return tuple(answer)
 
 
 def parse_retry_after(value: str | None, now: datetime) -> float | None:
@@ -511,7 +605,8 @@ class Fetcher:
             trust_env=False,
         )
         self._next_id = 1
-        # The URL whose fetch must not touch the cache (store_body=False), if any.
+        # The URL whose fetch must not touch the cache (store_body=False), if
+        # any; cleared while its origin's robots.txt is fetched.
         self._no_store_url: str | None = None
         self._robots: dict[str, tuple[RobotsPolicy, tuple[Receipt, ...]]] = {}
 
@@ -544,9 +639,12 @@ class Fetcher:
         """Fetch ``url``, checking robots.txt first.
 
         :param url: An absolute http or https URL with no user information.
-            It is requested and recorded in the normalized form httpx sends.
+            It is requested and recorded in the normalized form httpx sends,
+            without its fragment.
         :param store_body: ``False`` to keep only the receipts: the cache is
-            neither read nor written for the URL, and the result has no body.
+            neither read nor written for the URL or any redirect target it
+            leads to, and the result has no body. robots.txt still uses the
+            cache.
             For resources Cernis only checks the status of, such as an
             ``og:image``, which it must never store.
         :return: What the fetch did, with a receipt per attempt.
@@ -555,7 +653,7 @@ class Fetcher:
         problem = url_problem(url)
         if problem is not None:
             raise FetchError(problem)
-        url = str(httpx.URL(url))
+        url = str(httpx.URL(url).copy_with(fragment=None))
         decisions: list[RobotsDecision] = []
         self._no_store_url = None if store_body else url
         try:
@@ -643,7 +741,13 @@ class Fetcher:
         :param robots_url: The robots.txt URL.
         """
         if robots_url not in self._robots:
-            receipts, body, _ = self._attempts(robots_url, None)
+            # robots.txt is not the resource store_body=False protects, so it
+            # uses the cache even in the middle of such a fetch.
+            no_store, self._no_store_url = self._no_store_url, None
+            try:
+                receipts, body, _ = self._attempts(robots_url, None)
+            finally:
+                self._no_store_url = no_store
             self._robots[robots_url] = (RobotsPolicy(robots_url, receipts[-1], body), receipts)
 
     def _allowed(self, url: str, decisions: list[RobotsDecision]) -> bool:
@@ -752,15 +856,21 @@ class Fetcher:
 
         :param url: The URL about to be requested.
         :return: ``None`` if every address is public (or allowed loopback); an
-            ``ADDRESS_REFUSED`` exchange naming the first refused address; or a
-            ``CONNECTION`` exchange if the host does not resolve.
+            ``ADDRESS_REFUSED`` exchange naming the first refused address; a
+            ``TIMEOUT`` exchange if resolving takes longer than
+            ``connect_timeout``; or a ``CONNECTION`` exchange if the host does
+            not resolve.
         """
         parsed = httpx.URL(url)
         host = parsed.raw_host.decode("ascii")
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         try:
-            addresses = tuple(self._resolve(host, port))
-        except OSError:
+            addresses = _resolve_in_time(self._resolve, host, port, self.config.connect_timeout)
+        except TimeoutError:
+            return _Exchange(sent_at=self._now(), status=None, error=ErrorKind.TIMEOUT)
+        except (OSError, UnicodeError):
+            # UnicodeError: a name IDNA cannot encode (an empty or over-long
+            # label), which socket.getaddrinfo raises before any lookup.
             addresses = ()
         if not addresses:
             return _Exchange(sent_at=self._now(), status=None, error=ErrorKind.CONNECTION)
@@ -782,7 +892,7 @@ class Fetcher:
         :param url: The URL to request.
         :return: The response, or why there was none.
         """
-        self._pacer.wait((httpx.URL(url).host or "").lower())
+        self._pacer.wait((httpx.URL(url).host or "").lower().rstrip("."))
         cache = self._cache if self._no_store_url is None else None
         cached = cache.lookup(url) if cache is not None else None
         conditional: dict[str, str] = {}
@@ -880,13 +990,16 @@ class Fetcher:
         received = 0
         truncated = False
         for chunk in response.iter_raw():
+            # Every chunk, the one that fills the limit included.
+            self._check_deadline(started)
             received += len(chunk)
             buffer += decoder.feed(chunk, limit + 1 - len(buffer))
             if len(buffer) > limit or received > limit:
                 del buffer[limit:]
                 truncated = True
                 break
-            self._check_deadline(started)
+        if not truncated:
+            decoder.finish()
         body = bytes(buffer)
         if status == 200 and cache is not None:
             if truncated:

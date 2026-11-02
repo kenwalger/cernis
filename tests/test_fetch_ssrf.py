@@ -1,5 +1,7 @@
 """Tests for the address screen in the fetcher: every hop, a receipt, and a reason (ADR-005)."""
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -132,6 +134,68 @@ def test_a_host_that_does_not_resolve_is_connection(tmp_path: Path) -> None:
     (receipt,) = result.receipts
     assert (receipt.error_kind, receipt.final_url) == (ErrorKind.CONNECTION, PAGE)
     assert result.refusals == ()
+
+
+def test_a_resolver_that_does_not_answer_in_time_is_timeout(tmp_path: Path) -> None:
+    """Resolving is bounded by connect_timeout: a stuck lookup is TIMEOUT, and nothing is sent."""
+    release = threading.Event()
+
+    class Stuck(FakeResolver):
+        """Answers only when released, long after the timeout."""
+
+        def __call__(self, host: str, port: int) -> list[str]:
+            """Wait to be released, then resolve.
+
+            :param host: The host.
+            :param port: The port.
+            :return: Its addresses.
+            """
+            release.wait(5)
+            return super().__call__(host, port)
+
+    site = Site()
+    started = time.monotonic()
+    try:
+        result = make_fetcher(site, tmp_path, resolver=Stuck(), connect_timeout=0.2).fetch(PAGE)
+    finally:
+        release.set()
+    elapsed = time.monotonic() - started
+
+    (receipt,) = result.receipts
+    assert (receipt.error_kind, receipt.final_url, receipt.status_code) == (
+        ErrorKind.TIMEOUT,
+        PAGE,
+        None,
+    )
+    assert site.requests == []
+    assert elapsed < 2
+
+
+@pytest.mark.parametrize("host", ["a..b.example", "a" * 64 + ".example"])
+def test_a_host_the_resolver_cannot_encode_is_connection(tmp_path: Path, host: str) -> None:
+    """An empty or over-long label fails IDNA encoding: CONNECTION, never an exception."""
+
+    class Encoding(FakeResolver):
+        """Encodes the host as socket.getaddrinfo does, before any lookup."""
+
+        def __call__(self, host: str, port: int) -> list[str]:
+            """Encode with IDNA, then resolve.
+
+            :param host: The host.
+            :param port: The port.
+            :return: Its addresses.
+            """
+            host.encode("idna")
+            return super().__call__(host, port)
+
+    site = Site()
+    url = f"http://{host}/post"
+
+    result = make_fetcher(site, tmp_path, resolver=Encoding()).fetch(url)
+
+    (receipt,) = result.receipts
+    assert (receipt.error_kind, receipt.final_url) == (ErrorKind.CONNECTION, url)
+    assert site.requests == []
 
 
 def test_the_opt_in_allows_loopback(tmp_path: Path) -> None:

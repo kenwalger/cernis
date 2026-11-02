@@ -246,6 +246,19 @@ def test_a_truncated_page_is_not_checked(tmp_path: Path) -> None:
     )
 
 
+def test_urls_that_differ_only_by_fragment_are_fetched_once(tmp_path: Path) -> None:
+    """A fragment is not sent, so the run's second fetch of the resource reuses the first."""
+    site = Site()
+    site.add(PAGE, respond(200, b"x"))
+    fetches = audit_module.RunFetches(make_fetcher(site, tmp_path, min_interval=0))
+
+    first = fetches.fetch(PAGE + "#a")
+    second = fetches.fetch(PAGE + "#b")
+
+    assert second is first
+    assert site.urls().count(PAGE) == 1
+
+
 def test_a_url_given_twice_is_audited_once(tmp_path: Path) -> None:
     """Equivalent URLs are one subject, so keys stay unique."""
     site = Site()

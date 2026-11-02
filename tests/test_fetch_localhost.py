@@ -131,12 +131,17 @@ def test_loopback_is_refused_without_the_opt_in(tmp_path: Path, server: str) -> 
 
 
 def test_the_real_transport_connects_only_to_screened_hosts(tmp_path: Path, server: str) -> None:
-    """A host the fetcher did not screen and pin is refused inside the transport itself."""
+    """A host the fetcher did not screen and pin is refused inside the transport itself.
+
+    The fetcher is new, so it has no pooled connection that could be reused
+    without connecting: the refusal does not depend on how the server
+    handles keep-alive.
+    """
+    _Handler.requests_seen.clear()
     with _fetcher(tmp_path) as fetcher:
-        fetcher.fetch(f"http://{server}/page")
-        fetcher._network.pins.clear()
         exchange = fetcher._exchange(f"http://{server}/page")
 
     assert exchange.error is ErrorKind.ADDRESS_REFUSED
     assert exchange.refusal is not None
     assert "was not screened" in exchange.refusal
+    assert _Handler.requests_seen == []
