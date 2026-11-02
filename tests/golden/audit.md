@@ -7,8 +7,22 @@ Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.ab
 Subjects:
 
 - https://dev.to/example-author/a-synthetic-post-1a2b: read whole (receipt r-002); extractor dev.article 1+n1, host
-- https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 1+n1, declared
+- https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 2+n1, declared
 - https://blog.example.com/gone/: not read (FETCH_FAILED)
+
+## Summary
+
+AUTHOR defects per article:
+
+- https://dev.to/example-author/a-synthetic-post-1a2b: 2
+- https://blog.example.com/two-canonicals/: 2
+- https://blog.example.com/gone/: 0
+
+Articles with at least one AUTHOR defect: 2 of 3.
+
+## Site (0)
+
+None.
 
 ## Observed (79)
 

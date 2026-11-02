@@ -65,7 +65,13 @@ from collections.abc import Sequence
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from cernis.model import ErrorKind, Receipt, Snapshot
-from cernis.parse.extractors import SitePrefix, SiteType, find_body, select_extractor
+from cernis.parse.extractors import (
+    SitePrefix,
+    SiteType,
+    excluded,
+    find_body,
+    select_extractor,
+)
 from cernis.parse.html import (
     NON_TEXT_ELEMENTS,
     is_json_ld,
@@ -269,7 +275,11 @@ def build_snapshot(
         receipt.final_url or receipt.requested_url, site, prefixes
     )
     match = find_body(tree, extractor)
-    content = None if match.node is None else _sha256(visible_text(match.node))
+    content = (
+        None
+        if match.node is None
+        else _sha256(visible_text(match.node, excluded(match.node, extractor)))
+    )
     return Snapshot(
         receipt_id=receipt.id,
         extractor_id=extractor.id,

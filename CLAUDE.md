@@ -27,7 +27,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Phase 4 is built (session 5b, 2026-11-02).** `peri.robots.directives`; `epi.robots.access` (`src/cernis/checks/robots_access.py`, crawler list `src/cernis/data/ai_crawlers.toml`); `epi.sitemap.listed` (`src/cernis/sitemaps.py`, `src/cernis/checks/sitemap_listed.py`); `epi.links.resolve` (`src/cernis/checks/links.py`); `ReasonCode.LIMIT_REACHED` (ADR-001 amendment 2); URL sources (`src/cernis/sources.py`: `--from-sitemap`, `--from-dev-user`); `copies` in the pair map; `cernis pairs --from-dev-user`. DESIGN.md is at draft 2.6.
 
-**Next:** the full run across all of the author's articles, then Phase 5 (DESIGN.md section 10). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**The first site-wide audit ran (session 5c, 2026-11-02).** Claim numbers fixed (DESIGN.md section 8); `wordpress.entry` 2 (share widgets excluded); site-level findings (`epi.og.image.shared`, `SITE_LEVEL` in the registry) and the report's Summary and Site sections. Real reports go in `reports/`, which is git-ignored. DESIGN.md is at draft 2.7.
+
+**Next:** the Owner reviews every defect of the first full audit by hand (C-3) before C-1 and C-3 are evaluated; then Phase 5 (DESIGN.md section 10). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 

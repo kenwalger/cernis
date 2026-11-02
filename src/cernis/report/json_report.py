@@ -13,9 +13,13 @@ The report is one JSON object:
 - ``sources``: where the URLs came from when a sitemap or a DEV user listed
   them: ``kind``, ``query``, ``receipt_ids``, ``listed``, and ``notes``
   (each ``url`` and ``note``), such as articles not cross-posted (Session 5b);
-- ``counts``: the number of findings in each report section
-  (``observed``, ``recommendations``, ``not_determinable``), and nothing
-  else (principle 2: no scores or summary numbers);
+- ``counts``: the number of findings of each status (``observed``,
+  ``recommendations``, ``not_determinable``), and ``site``, how many of the
+  observed are site-level (Session 5c);
+- ``summary`` (Session 5c): ``author_defects``, each subject's count of
+  ``AUTHOR`` defects; ``articles``, the number of subjects; and
+  ``articles_with_author_defects``, how many have at least one. Plain counts
+  for claim C-1, never a score (principle 2);
 - ``findings``: every finding, with every field, its derived ``key``, and
   its evidence;
 - ``receipts`` and ``snapshots``: every receipt and snapshot, with every field.
@@ -27,8 +31,8 @@ not.
 
 import json
 
-from cernis.checks.registry import CHECKS
-from cernis.model import Evidence, Finding, Receipt, Run, Snapshot, Status
+from cernis.checks.registry import CHECKS, SITE_LEVEL
+from cernis.model import Actor, Evidence, Finding, Receipt, Run, Snapshot, Status
 
 FORMAT = "cernis-report"
 """The report format's name."""
@@ -120,14 +124,33 @@ def section_counts(run: Run) -> dict[str, int]:
     """Count the findings in each report section.
 
     :param run: The run.
-    :return: ``observed``, ``recommendations``, and ``not_determinable``.
+    :return: ``observed``, ``recommendations``, and ``not_determinable``, over
+        every finding; and ``site``, how many of the observed findings are
+        site-level (:data:`~cernis.checks.registry.SITE_LEVEL`).
     """
-    statuses = [finding.status for finding in run.findings]
+    statuses = [f.status for f in run.findings]
     return {
+        "site": sum(1 for f in run.findings if f.check_id in SITE_LEVEL),
         "observed": statuses.count(Status.OBSERVED),
         "recommendations": statuses.count(Status.RECOMMENDATION),
         "not_determinable": statuses.count(Status.NOT_DETERMINABLE),
     }
+
+
+def author_defects(run: Run) -> dict[str, int]:
+    """Count each article's ``AUTHOR`` defects: the measure claim C-1 is judged on.
+
+    Plain counts, never weighted or combined into a score (DESIGN.md
+    principle 2).
+
+    :param run: The run.
+    :return: The count for every subject, in run order (zero included).
+    """
+    counts = dict.fromkeys(run.subjects, 0)
+    for finding in run.findings:
+        if finding.defect and finding.actor is Actor.AUTHOR:
+            counts[finding.subject_url] += 1
+    return counts
 
 
 def checks_in(run: Run) -> list[tuple[str, str]]:
@@ -171,6 +194,16 @@ def report_json(run: Run) -> str:
             for source in run.sources
         ],
         "counts": section_counts(run),
+        "summary": {
+            "author_defects": [
+                {"subject": subject, "count": count}
+                for subject, count in author_defects(run).items()
+            ],
+            "articles": len(run.subjects),
+            "articles_with_author_defects": sum(
+                1 for count in author_defects(run).values() if count
+            ),
+        },
         "findings": [finding_as_dict(finding) for finding in run.findings],
         "receipts": [receipt_as_dict(receipt) for receipt in run.receipts],
         "snapshots": [snapshot_as_dict(snapshot) for snapshot in run.snapshots],

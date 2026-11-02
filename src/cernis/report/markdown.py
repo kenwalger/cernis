@@ -23,8 +23,9 @@ from a page is escaped so it cannot become Markdown or HTML.
 import re
 from itertools import groupby
 
+from cernis.checks.registry import SITE_LEVEL
 from cernis.model import Evidence, Finding, Run, Snapshot, Status
-from cernis.report.json_report import checks_in, section_counts
+from cernis.report.json_report import author_defects, checks_in, section_counts
 
 MAX_VALUE = 160
 """The most characters of an evidence value the Markdown report shows."""
@@ -303,8 +304,23 @@ def report_markdown(run: Run) -> str:
         if source.notes:
             lines.append("")
             lines += [f"- {escape(note.url)}: {escape(note.note)}" for note in source.notes]
+    defects = author_defects(run)
+    flagged = sum(1 for count in defects.values() if count)
+    lines += ["", "## Summary", "", "AUTHOR defects per article:", ""]
+    lines += [f"- {escape(subject)}: {count}" for subject, count in defects.items()]
+    lines += [
+        "",
+        f"Articles with at least one AUTHOR defect: {flagged} of {len(run.subjects)}.",
+    ]
+    site = [f for f in run.findings if f.check_id in SITE_LEVEL]
+    lines += ["", f"## Site ({len(site)})"]
+    if site:
+        for finding in site:
+            lines += ["", *_observed(finding)]
+    else:
+        lines += ["", "None."]
     sections = (
-        ("Observed", Status.OBSERVED, counts["observed"]),
+        ("Observed", Status.OBSERVED, counts["observed"] - counts["site"]),
         ("Recommendations", Status.RECOMMENDATION, counts["recommendations"]),
         ("Not determinable (non liquet)", Status.NOT_DETERMINABLE, counts["not_determinable"]),
     )
@@ -322,6 +338,7 @@ def report_markdown(run: Run) -> str:
                     f
                     for f in run.findings
                     if f.status is status
+                    and f.check_id not in SITE_LEVEL
                     and f.subject_url == subject
                     and (f.check_id == _PAIR_CHECK) is pair_part
                 ]

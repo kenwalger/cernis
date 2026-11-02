@@ -129,9 +129,14 @@ Checks around the page (epitext):
 | `epi.pair.canonical` | Whether a copy's canonical URL names its original, and the original's names itself |
 | `epi.canonical.resolves` | What each canonical URL answers, and where it redirects |
 | `epi.og.image.resolves` | Whether the social image answers with an image |
+| `epi.og.image.shared` | Which audited articles on one site share a social image (a site-level fact) |
 | `epi.robots.access` | What robots.txt says for general crawlers and for each AI crawler (GPTBot, ClaudeBot, and others), never judged |
 | `epi.sitemap.listed` | Whether the site's sitemap lists the page |
 | `epi.links.resolve` | Whether the links in the article body resolve (at most 100 per page and 5 per external host, configurable) |
+
+Every report starts with a summary of plain counts (each article's number of
+author defects, and how many articles have any) and a Site section for
+findings about the set of articles, not one page.
 
 A defect is reported only for a violation of a published standard (such as WCAG
 or the Open Graph protocol) or of the author's own stated intent, never for a

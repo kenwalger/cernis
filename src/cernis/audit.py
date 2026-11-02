@@ -46,6 +46,7 @@ from cernis.checks.epitext import (
     canonical_resolves,
     canonical_urls,
     og_image_resolves,
+    og_image_shared,
     og_image_url,
     pair_canonical,
 )
@@ -279,6 +280,7 @@ def audit(
 
     for page in pages.values():
         findings.extend(around.page(page, new_id))
+    findings.extend(og_image_shared(list(pages.values()), new_id=new_id))
 
     run_pairs: list[RunPair] = []
     for pair in pairs:

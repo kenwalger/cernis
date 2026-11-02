@@ -107,12 +107,12 @@ def test_the_json_report_is_versioned_and_complete(tmp_path: Path) -> None:
 
 
 def test_the_json_report_counts_sections_and_nothing_else(tmp_path: Path) -> None:
-    """Principle 2: plain counts per section, no score."""
+    """Principle 2: plain counts per status, and the site-level count, no score."""
     payload = json.loads(report_json(golden_run(tmp_path)))
 
-    assert set(payload["counts"]) == {"observed", "recommendations", "not_determinable"}
     statuses = [f["status"] for f in payload["findings"]]
     assert payload["counts"] == {
+        "site": 0,
         "observed": statuses.count("OBSERVED"),
         "recommendations": statuses.count("RECOMMENDATION"),
         "not_determinable": statuses.count("NOT_DETERMINABLE"),
@@ -134,7 +134,7 @@ def test_the_json_report_names_every_check_version_used(tmp_path: Path) -> None:
 
 
 def test_the_markdown_report_has_the_header_and_three_sections(tmp_path: Path) -> None:
-    """Run id, Cernis version, check versions; Observed, Recommendations, non liquet."""
+    """Run id, versions; then Summary, Site, Observed, Recommendations, and non liquet."""
     run = golden_run(tmp_path)
     text = report_markdown(run)
 
@@ -143,6 +143,8 @@ def test_the_markdown_report_has_the_header_and_three_sections(tmp_path: Path) -
     statuses = [f.status.value for f in run.findings]
     headings = [line for line in text.splitlines() if line.startswith("## ")]
     assert headings == [
+        "## Summary",
+        "## Site (0)",
         f"## Observed ({statuses.count('OBSERVED')})",
         f"## Recommendations ({statuses.count('RECOMMENDATION')})",
         f"## Not determinable (non liquet) ({statuses.count('NOT_DETERMINABLE')})",

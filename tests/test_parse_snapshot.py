@@ -375,3 +375,19 @@ def test_the_content_hash_is_the_hash_of_the_article_text() -> None:
     expected = hashlib.sha256(json.dumps(article.text, ensure_ascii=False).encode("utf-8"))
 
     assert snap(body, DEV_URL).content_sha256 == expected.hexdigest()
+
+
+def test_share_buttons_do_not_change_the_wordpress_content_hash() -> None:
+    """Session 5c: adding or changing a share widget is not a content change."""
+    plain = b'<html><body><div class="entry-content"><p>The post.</p></div></body></html>'
+    shared = (
+        b'<html><body><div class="entry-content"><p>The post.</p>'
+        b'<div class="sharedaddy"><a href="https://www.facebook.com/sharer.php">Share</a></div>'
+        b"</div></body></html>"
+    )
+
+    first = build_snapshot(receipt_for(plain), plain, site=SiteType.WORDPRESS)
+    second = build_snapshot(receipt_for(shared), shared, site=SiteType.WORDPRESS)
+
+    assert first.content_sha256 == second.content_sha256
+    assert first.extractor_version == "2+n1"

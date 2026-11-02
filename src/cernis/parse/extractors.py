@@ -6,7 +6,10 @@ extractor shows in history as a ``CHECKER`` change, not a page change.
 
 - ``dev.article``: DEV's ``#article-body``.
 - ``wordpress.entry``: ``.entry-content`` (classic themes), else
-  ``.wp-block-post-content`` (block themes).
+  ``.wp-block-post-content`` (block themes). Version 2 (Session 5c) leaves
+  out share-button containers that plugins insert into the body (Jetpack's
+  ``.sharedaddy`` and the others in :data:`WORDPRESS_SHARE_CONTAINERS`), for
+  the content hash and for links alike.
 - ``generic``: finds no body, ever. ``content_sha256`` is then ``None``, and
   history says ``UNCLASSIFIED`` rather than guess which part is the article.
 
@@ -50,16 +53,39 @@ class Extractor:
     :param version: Its version; any change to what it selects bumps it.
     :param selectors: CSS selectors tried in order; the first that matches
         anything decides.
+    :param exclude: CSS selectors for containers inside the body that are
+        not the author's text (share buttons); left out of the text and the
+        links.
     """
 
     id: str
     version: str
     selectors: tuple[str, ...]
+    exclude: tuple[str, ...] = ()
 
+
+WORDPRESS_SHARE_CONTAINERS: tuple[str, ...] = (
+    ".sharedaddy",
+    ".sd-sharing-enabled",
+    ".wp-block-jetpack-sharing-buttons",
+    ".addtoany_share_save_container",
+    ".addtoany_content",
+    ".heateor_sss_sharing_container",
+    ".shared-counts-wrap",
+    ".swp_social_panel",
+    ".sharethis-inline-share-buttons",
+    ".wp-block-outermost-social-sharing",
+)
+"""Share-button containers WordPress plugins put inside the post body: Jetpack
+(classic and block), AddToAny, Sassy Social Share, Shared Counts, Social
+Warfare, ShareThis, and the Social Sharing block."""
 
 DEV_ARTICLE = Extractor(id="dev.article", version="1", selectors=("#article-body",))
 WORDPRESS_ENTRY = Extractor(
-    id="wordpress.entry", version="1", selectors=(".entry-content", ".wp-block-post-content")
+    id="wordpress.entry",
+    version="2",
+    selectors=(".entry-content", ".wp-block-post-content"),
+    exclude=WORDPRESS_SHARE_CONTAINERS,
 )
 GENERIC = Extractor(id="generic", version="1", selectors=())
 
@@ -222,6 +248,16 @@ class BodyMatch:
     problem: str | None
 
 
+def excluded(node: LexborNode, extractor: Extractor) -> frozenset[int]:
+    """Find the containers inside a body that an extractor leaves out.
+
+    :param node: The article body.
+    :param extractor: The extractor.
+    :return: The ``mem_id`` of each excluded element.
+    """
+    return frozenset(found.mem_id for selector in extractor.exclude for found in node.css(selector))
+
+
 def find_body(tree: LexborHTMLParser, extractor: Extractor) -> BodyMatch:
     """Find the article body with an extractor.
 
@@ -284,10 +320,11 @@ def read_article(
     match = find_body(tree, extractor)
     if match.node is None:
         return Article(extractor=extractor, found=False, text=None, links=(), problem=match.problem)
+    skip = excluded(match.node, extractor)
     return Article(
         extractor=extractor,
         found=True,
-        text=visible_text(match.node),
-        links=links_in(match.node),
+        text=visible_text(match.node, skip),
+        links=links_in(match.node, skip),
         problem=None,
     )

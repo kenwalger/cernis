@@ -114,6 +114,16 @@ uses [Semantic Versioning](https://semver.org/).
   its source (`Run.sources`, and `sources` in the JSON report).
 - Pair maps accept `copies = [...]`; `cernis pairs --from-dev-user NAME`.
 - `--max-links-per-page`, `--max-links-per-host`, `--max-sitemap-documents`.
+- Claims C-1 to C-3 have their numbers fixed (DESIGN.md section 8).
+- `wordpress.entry` 2: share-button containers (Jetpack and other common
+  plugins) are left out of the article body, for links and the content hash.
+- A `[[site]]` prefix covering a whole origin makes the whole site one
+  section for `epi.sitemap.listed`.
+- `epi.og.image.shared`: a site-level fact when audited articles on one site
+  share an og:image; reports gain a Site section.
+- A run summary: each article's count of AUTHOR defects, and how many
+  articles have any, in the Markdown and JSON reports (`summary`,
+  `counts.site`).
 
 ## [0.0.1] - 2026-10-28
 

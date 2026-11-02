@@ -302,3 +302,5 @@ docs/reference/*
 .aqg/
 .idea/
 .cernis-cache/
+# Real audit reports (Session 5c onward); kept locally, never committed
+reports/

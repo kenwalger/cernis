@@ -10,6 +10,8 @@ each distinct URL once):
   type (the URL is the ``target``). Defect for 404 or 410, or a 200 whose
   ``Content-Type`` is not ``image/*``. The image is never decoded or stored;
   only its receipt is kept.
+- ``epi.og.image.shared`` (Session 5c): a site-level fact, when two or
+  more audited articles on one site share an ``og:image`` URL.
 - ``epi.pair.canonical``: the flagship check, for a declared original and
   copy. Two findings: target ``copy`` compares the copy's canonical with the
   original's URL, target ``original`` compares the original's canonical
@@ -48,7 +50,7 @@ from cernis.urls import UrlMatch, compare_urls, is_absolute_http_url, normalize_
 NewId = Callable[[], str]
 """Returns the next finding id in the run."""
 
-_DEV_PLATFORM_EPI = frozenset({"epi.og.image.resolves", "epi.robots.access"})
+_DEV_PLATFORM_EPI = frozenset({"epi.og.image.resolves", "epi.og.image.shared", "epi.robots.access"})
 
 
 def epi_actor(site: SiteType | None, check_id: str) -> Actor:
@@ -662,3 +664,57 @@ __all__ = [
     "pair_canonical",
     "unanswered",
 ]
+
+
+def og_image_shared(pages: Sequence[FetchedPage], *, new_id: NewId) -> list[Finding]:
+    """``epi.og.image.shared``: audited articles on one site that share an ``og:image``.
+
+    A site-level fact, never a defect: one finding per site (origin) and
+    image URL used by two or more of the run's articles read whole, listing
+    them. The subject is the first of them in run order, and the image URL is
+    the target, so the key is stable while the set's first article is. Each
+    article's ``og:image`` tag is the evidence.
+
+    :param pages: The run's pages, in run order.
+    :param new_id: The run's finding id source.
+    :return: The findings, in order of each image's first use.
+    """
+    check_id = "epi.og.image.shared"
+    groups: dict[tuple[str, str], list[tuple[FetchedPage, str]]] = {}
+    for page in pages:
+        image = og_image_url(page)
+        if image is None or page.page is None:
+            continue
+        origin = str(httpx.URL(page.base).copy_with(path="/", query=None, fragment=None))
+        groups.setdefault((origin, normalize_url(image)), []).append((page, image))
+    findings: list[Finding] = []
+    for (origin, _), members in groups.items():
+        if len(members) < 2:
+            continue
+        first, image = members[0]
+        subjects = ", ".join(page.subject for page, _ in members)
+        evidence = []
+        for page, url in members:
+            assert page.page is not None
+            evidence.append(
+                Evidence(
+                    receipt_id=page.page.receipt_id,
+                    location=f'{page.subject} meta[property="og:image"]',
+                    observed=url,
+                )
+            )
+        findings.append(
+            _finding(
+                new_id=new_id,
+                check_id=check_id,
+                subject=first.subject,
+                target=image,
+                actor=epi_actor(first.site, check_id),
+                summary=(
+                    f"{len(members)} audited articles on {origin} share the og:image {image}: "
+                    f"{subjects}."
+                ),
+                evidence=evidence,
+            )
+        )
+    return findings

@@ -394,7 +394,7 @@ NON_TEXT_ELEMENTS: frozenset[str] = frozenset({"script", "style", "noscript", "t
 """Elements whose contents are not text a reader sees."""
 
 
-def visible_text(node: LexborNode) -> str:
+def visible_text(node: LexborNode, skip: frozenset[int] = frozenset()) -> str:
     """Return the text a reader sees in an element, normalized.
 
     Text inside ``script``, ``style``, ``noscript``, and ``template`` is left
@@ -404,12 +404,16 @@ def visible_text(node: LexborNode) -> str:
     malformed page cannot exhaust the stack.
 
     :param node: The element.
+    :param skip: The ``mem_id`` of each element left out with everything in
+        it (an extractor's excluded containers, such as share buttons).
     :return: The text.
     """
     parts: list[str] = []
     stack = [node]
     while stack:
         current = stack.pop()
+        if current.mem_id in skip:
+            continue
         tag = current.tag
         if tag == "-text":
             parts.append(current.text_content or "")
@@ -418,13 +422,31 @@ def visible_text(node: LexborNode) -> str:
     return normalize_text(" ".join(parts))
 
 
-def links_in(node: LexborNode) -> tuple[Link, ...]:
+def _inside(node: LexborNode, top: LexborNode, skip: frozenset[int]) -> bool:
+    """Tell whether an element is, or is inside, a skipped element below ``top``.
+
+    :param node: The element.
+    :param top: The element the search started from.
+    :param skip: The ``mem_id`` of each skipped element.
+    :return: Whether it is skipped.
+    """
+    current: LexborNode | None = node
+    while current is not None and current.mem_id != top.mem_id:
+        if current.mem_id in skip:
+            return True
+        current = current.parent
+    return False
+
+
+def links_in(node: LexborNode, skip: frozenset[int] = frozenset()) -> tuple[Link, ...]:
     """Collect the ``<a href>`` links inside an element.
 
     :param node: The element.
+    :param skip: The ``mem_id`` of each element whose links are left out.
     :return: The links, in document order.
     """
     return tuple(
         Link(href=link.attributes.get("href") or "", text=normalize_text(link.text(deep=True)))
         for link in node.css("a[href]")
+        if not (skip and _inside(link, node, skip))
     )

@@ -54,7 +54,7 @@ def test_every_extractor_has_a_unique_id_and_a_version() -> None:
     """Extractor id and version go on every snapshot."""
     assert [(e.id, e.version) for e in EXTRACTORS] == [
         ("dev.article", "1"),
-        ("wordpress.entry", "1"),
+        ("wordpress.entry", "2"),
         ("generic", "1"),
     ]
 
@@ -216,3 +216,36 @@ def test_a_root_prefix_covers_a_whole_host() -> None:
 def test_select_extractor_reports_a_prefix_selection() -> None:
     """The extractor follows the prefix's site type, and says so."""
     assert select_extractor(POST, None, [BLOG]) == (WORDPRESS_ENTRY, ExtractorSelection.PREFIX)
+
+
+# Share buttons (Session 5c)
+
+SHARED = (
+    '<html><body><article><div class="entry-content">'
+    '<p>The post, with <a href="https://www.example.org/paper">a paper</a>.</p>'
+    "{share}"
+    "</div></article></body></html>"
+)
+JETPACK = (
+    '<div class="sharedaddy sd-sharing-enabled"><h3>Share this:</h3><ul>'
+    '<li><a href="https://www.facebook.com/sharer.php?u=x">Facebook</a></li>'
+    '<li><a href="https://twitter.com/intent/tweet?url=x">X</a></li></ul></div>'
+)
+
+
+@pytest.mark.parametrize(
+    "share",
+    [
+        JETPACK,
+        '<div class="addtoany_share_save_container"><a href="https://www.addtoany.com/share">Share</a></div>',
+        '<div class="heateor_sss_sharing_container"><a href="https://www.reddit.com/submit">Reddit</a></div>',
+    ],
+)
+def test_wordpress_leaves_share_buttons_out_of_the_article(share: str) -> None:
+    """Version 2: share-button containers are neither the article's text nor its links."""
+    tree = LexborHTMLParser(SHARED.format(share=share))
+
+    article = read_article(tree, WORDPRESS_URL, SiteType.WORDPRESS)
+
+    assert [link.href for link in article.links] == ["https://www.example.org/paper"]
+    assert article.text == "The post, with a paper ."

@@ -77,9 +77,28 @@
   "pairs": [],
   "sources": [],
   "counts": {
+    "site": 0,
     "observed": 79,
     "recommendations": 4,
     "not_determinable": 16
+  },
+  "summary": {
+    "author_defects": [
+      {
+        "subject": "https://dev.to/example-author/a-synthetic-post-1a2b",
+        "count": 2
+      },
+      {
+        "subject": "https://blog.example.com/two-canonicals/",
+        "count": 2
+      },
+      {
+        "subject": "https://blog.example.com/gone/",
+        "count": 0
+      }
+    ],
+    "articles": 3,
+    "articles_with_author_defects": 2
   },
   "findings": [
     {
@@ -2811,7 +2830,7 @@
     {
       "receipt_id": "r-004",
       "extractor_id": "wordpress.entry",
-      "extractor_version": "1+n1",
+      "extractor_version": "2+n1",
       "extractor_selection": "declared",
       "content_sha256": "c1e5cbd5e76a1f306c89ff7758ded12f7d96e673f5125bf85153984cb2238059",
       "head_sha256": "79a2df5f6d604446deddefb2c26ac3fb9698ee9b0ec89a56cbf2370614dd9571",

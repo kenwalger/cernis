@@ -92,6 +92,11 @@ CHECKS: tuple[CheckSpec, ...] = (
         implemented=True,
     ),
     _epi(
+        "epi.og.image.shared",
+        "Audited articles on one site that share an og:image URL; a site fact, never a defect.",
+        implemented=True,
+    ),
+    _epi(
         "epi.robots.access",
         "What robots.txt says for this URL, for * and each AI crawler; never a defect.",
         implemented=True,
@@ -109,6 +114,12 @@ CHECKS: tuple[CheckSpec, ...] = (
 )
 """Every registered check, peritext first, in DESIGN.md order."""
 
+
+SITE_LEVEL: frozenset[str] = frozenset({"epi.og.image.shared"})
+"""Checks whose findings are about a set of audited articles, not one page.
+
+Reports show them in their own "Site" section. Each finding still names one
+subject (the first article of the set, in run order) so its key is stable."""
 
 _BY_ID = {spec.id: spec for spec in CHECKS}
 
