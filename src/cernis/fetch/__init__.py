@@ -8,7 +8,7 @@ from cernis.fetch.client import (
     FetchError,
     FetchResult,
 )
-from cernis.fetch.robots import RobotsBasis, RobotsDecision
+from cernis.fetch.robots import RobotsBasis, RobotsDecision, RobotsPolicy
 
 __all__ = [
     "USER_AGENT",
@@ -19,4 +19,5 @@ __all__ = [
     "Fetcher",
     "RobotsBasis",
     "RobotsDecision",
+    "RobotsPolicy",
 ]

@@ -45,11 +45,27 @@
       "version": "1"
     },
     {
+      "id": "peri.robots.directives",
+      "version": "1"
+    },
+    {
       "id": "epi.canonical.resolves",
       "version": "1"
     },
     {
       "id": "epi.og.image.resolves",
+      "version": "1"
+    },
+    {
+      "id": "epi.robots.access",
+      "version": "1+c1+m1"
+    },
+    {
+      "id": "epi.sitemap.listed",
+      "version": "1"
+    },
+    {
+      "id": "epi.links.resolve",
       "version": "1"
     }
   ],
@@ -59,10 +75,11 @@
     "https://blog.example.com/gone/"
   ],
   "pairs": [],
+  "sources": [],
   "counts": {
-    "observed": 30,
-    "recommendations": 2,
-    "not_determinable": 13
+    "observed": 79,
+    "recommendations": 4,
+    "not_determinable": 16
   },
   "findings": [
     {
@@ -398,6 +415,37 @@
     },
     {
       "id": "f-014",
+      "key": "4b1d06c79d146a09b01730690e0112ed60fb0eac24e953f0e2584214b28de0ad",
+      "check_id": "peri.robots.directives",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "",
+      "summary": "The page declares no robots directives: no robots meta tag and no X-Robots-Tag header.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta> named one of: amazonbot, applebot-extended, bingbot, ccbot, chatgpt-user, claude-searchbot, claude-user, claudebot, google-extended, googlebot, googlebot-news, gptbot, meta-externalagent, oai-searchbot, perplexity-user, perplexitybot, robots"
+        },
+        {
+          "receipt_id": "r-002",
+          "location": "response headers",
+          "observed": null,
+          "searched_for": "an X-Robots-Tag header"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-015",
       "key": "abc9bb7889deaae265ddd05c265f90ed784d784d8fc69882361bf490664206d5",
       "check_id": "peri.canonical.present",
       "check_version": "1",
@@ -428,7 +476,7 @@
       "would_require": null
     },
     {
-      "id": "f-015",
+      "id": "f-016",
       "key": "d3ac45f66392093694d31cee0edf923f3dfd7f74f07626191b887e6f0455b405",
       "check_id": "peri.canonical.single",
       "check_version": "1",
@@ -459,7 +507,7 @@
       "would_require": null
     },
     {
-      "id": "f-016",
+      "id": "f-017",
       "key": "e44151b9dba8415e42a70e8a19092ec82af71fd71b7f3a76910ff7aea41a8a9b",
       "check_id": "peri.canonical.absolute",
       "check_version": "1",
@@ -490,7 +538,7 @@
       "would_require": null
     },
     {
-      "id": "f-017",
+      "id": "f-018",
       "key": "cfe522049720b4ce8655bf18974355ff6723b83dfe6a0bcb93d2110f71efe26d",
       "check_id": "peri.meta.description",
       "check_version": "1",
@@ -515,7 +563,7 @@
       "would_require": null
     },
     {
-      "id": "f-018",
+      "id": "f-019",
       "key": "ee02a72d0f497794d3d5f44718a2e5d278e181a97a86621e30782b671ee68dd6",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -540,7 +588,7 @@
       "would_require": null
     },
     {
-      "id": "f-019",
+      "id": "f-020",
       "key": "4593e1b5df04742da9248cc7fa32439a6f52629a57d3fb930bfbb882412c8321",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -565,7 +613,7 @@
       "would_require": null
     },
     {
-      "id": "f-020",
+      "id": "f-021",
       "key": "731c18be2f578a4fc8d0ef8bba71c42cb0db8f1490f1ba24043d99d65b4c35da",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -590,7 +638,7 @@
       "would_require": null
     },
     {
-      "id": "f-021",
+      "id": "f-022",
       "key": "b49377f8e95321d2d18cffac2cf7a7c344fb2928faeb90273b60375d899e0e11",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -615,7 +663,7 @@
       "would_require": null
     },
     {
-      "id": "f-022",
+      "id": "f-023",
       "key": "4fc22dff506a32e2d4b120f0dab78e1f5c5fbf24ee079c8a1d7e62fa97e07035",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -640,7 +688,7 @@
       "would_require": null
     },
     {
-      "id": "f-023",
+      "id": "f-024",
       "key": "5faae59e276a03b3a5230e3bd0418e8db213acddce2748f729e128f0cbd87342",
       "check_id": "peri.og.url_matches_canonical",
       "check_version": "2",
@@ -665,7 +713,7 @@
       "would_require": null
     },
     {
-      "id": "f-024",
+      "id": "f-025",
       "key": "5eae259e4b5834c27de85eb28cac0acdf558bd2bca0b08015119415559ef316c",
       "check_id": "peri.lang",
       "check_version": "2",
@@ -690,7 +738,7 @@
       "would_require": null
     },
     {
-      "id": "f-025",
+      "id": "f-026",
       "key": "99dde689f9edd9f622ffec6d2d608600e61d1c0270228913335fa345d88c10b2",
       "check_id": "peri.jsonld.parses",
       "check_version": "1",
@@ -715,7 +763,7 @@
       "would_require": null
     },
     {
-      "id": "f-026",
+      "id": "f-027",
       "key": "0f8751d2c89ca21a32f0279930a588627388c462229d6df5ed8235ee9f6e53f6",
       "check_id": "peri.title",
       "check_version": "1",
@@ -740,7 +788,38 @@
       "would_require": null
     },
     {
-      "id": "f-027",
+      "id": "f-028",
+      "key": "cd07e50ed97a50d1865719b0c25f57ef182959a0379f8ebb80b9fb7abe2a10ef",
+      "check_id": "peri.robots.directives",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The page declares no robots directives: no robots meta tag and no X-Robots-Tag header.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "the whole document",
+          "observed": null,
+          "searched_for": "a <meta> named one of: amazonbot, applebot-extended, bingbot, ccbot, chatgpt-user, claude-searchbot, claude-user, claudebot, google-extended, googlebot, googlebot-news, gptbot, meta-externalagent, oai-searchbot, perplexity-user, perplexitybot, robots"
+        },
+        {
+          "receipt_id": "r-004",
+          "location": "response headers",
+          "observed": null,
+          "searched_for": "an X-Robots-Tag header"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-029",
       "key": "7a9594f2b967fb9fe0b4a61c3ab5fbc396294728d41e12b65b0dfa0bad9d8fe8",
       "check_id": "peri.canonical.single",
       "check_version": "1",
@@ -753,14 +832,14 @@
       "evidence": [],
       "rationale": "The page declares 2 canonical links that name different URLs (https://blog.example.com/two-canonicals/, https://dev.to/example-author/two-canonicals-5e6f). RFC 6596 defines the canonical link relation as naming one preferred URL for a page; links that disagree leave that URL undeclared.",
       "based_on": [
-        "f-015"
+        "f-016"
       ],
       "reason_code": null,
       "question": null,
       "would_require": null
     },
     {
-      "id": "f-028",
+      "id": "f-030",
       "key": "011b16bfc2b8c890f3e2930d69ed0e9caba20222e3a9110ef81600479d4bb1b9",
       "check_id": "peri.canonical.present",
       "check_version": "1",
@@ -785,7 +864,7 @@
       "would_require": null
     },
     {
-      "id": "f-029",
+      "id": "f-031",
       "key": "d112f1d0290802ba60f7d05296f6ac094003f1905e1264fd9b4c06b0eb1b8bb0",
       "check_id": "peri.canonical.single",
       "check_version": "1",
@@ -810,7 +889,7 @@
       "would_require": null
     },
     {
-      "id": "f-030",
+      "id": "f-032",
       "key": "05e26d50ec15de6c0340a353c44ed763a4d5f23973873b20b6f1fbb396f1cbbb",
       "check_id": "peri.canonical.absolute",
       "check_version": "1",
@@ -835,7 +914,7 @@
       "would_require": null
     },
     {
-      "id": "f-031",
+      "id": "f-033",
       "key": "a0621e3aa331e0183a2dae421de3d0d3cfc85becaeef78689cbfb181dba75baf",
       "check_id": "peri.meta.description",
       "check_version": "1",
@@ -860,7 +939,7 @@
       "would_require": null
     },
     {
-      "id": "f-032",
+      "id": "f-034",
       "key": "c4c2c384068172b886c515f2ec527bb8a224bedfa8f485aa2209f3c337b1f0d8",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -885,7 +964,7 @@
       "would_require": null
     },
     {
-      "id": "f-033",
+      "id": "f-035",
       "key": "4e7ce0f72daf17d64cce817d04572f4d2a7336639dddb7318214ff66109f8398",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -910,7 +989,7 @@
       "would_require": null
     },
     {
-      "id": "f-034",
+      "id": "f-036",
       "key": "8bac78ca163b57bee1ffa0b8af82c00c39947e233ee75115438555eefe17e521",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -935,7 +1014,7 @@
       "would_require": null
     },
     {
-      "id": "f-035",
+      "id": "f-037",
       "key": "b4b64366c4119d1212ff54d8f4c76fe2f7ee600862e166c32f5f071548944958",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -960,7 +1039,7 @@
       "would_require": null
     },
     {
-      "id": "f-036",
+      "id": "f-038",
       "key": "03336828f20792a62de1494a8c545c8d437f7905d552ced728b29a0fefda7057",
       "check_id": "peri.og.core",
       "check_version": "2",
@@ -985,7 +1064,7 @@
       "would_require": null
     },
     {
-      "id": "f-037",
+      "id": "f-039",
       "key": "7815a55aec84eca6a83fa0e4ae4878e46fdf569309bfadd86275719a72bb6624",
       "check_id": "peri.og.url_matches_canonical",
       "check_version": "2",
@@ -1010,7 +1089,7 @@
       "would_require": null
     },
     {
-      "id": "f-038",
+      "id": "f-040",
       "key": "eb70fbdbe10f5d890c2eb6d1744dd3c4b1b35b558b8092cc974f70440e889d17",
       "check_id": "peri.lang",
       "check_version": "2",
@@ -1035,7 +1114,7 @@
       "would_require": null
     },
     {
-      "id": "f-039",
+      "id": "f-041",
       "key": "3e969419f821f9af6efd91451c7166ca3861901965a105d154c6c142e7ed3626",
       "check_id": "peri.jsonld.parses",
       "check_version": "1",
@@ -1060,7 +1139,7 @@
       "would_require": null
     },
     {
-      "id": "f-040",
+      "id": "f-042",
       "key": "d07d55799d381d61f1f190397294e1f4d9d385721fdb8c9ecdf40203ac3ca4b7",
       "check_id": "peri.title",
       "check_version": "1",
@@ -1085,7 +1164,32 @@
       "would_require": null
     },
     {
-      "id": "f-041",
+      "id": "f-043",
+      "key": "56641290f714d59ae62f35f40bada9bb29b8803cae3de3a9a189b356e57f7bbc",
+      "check_id": "peri.robots.directives",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "UNKNOWN",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Which robots directives the page declares is not determinable: the request timed out.",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Which robots directives the page declares",
+      "would_require": null
+    },
+    {
+      "id": "f-044",
       "key": "822bff089f3a82a9998f77431876892c87c9c0a9c8d82368c4b8db83406b5276",
       "check_id": "epi.canonical.resolves",
       "check_version": "1",
@@ -1110,7 +1214,7 @@
       "would_require": null
     },
     {
-      "id": "f-042",
+      "id": "f-045",
       "key": "da6396865e628da9ec7adeccb0bafcf5c08acf9b51048d199de9cd082248923e",
       "check_id": "epi.og.image.resolves",
       "check_version": "1",
@@ -1141,7 +1245,472 @@
       "would_require": null
     },
     {
-      "id": "f-043",
+      "id": "f-046",
+      "key": "68317b442c1243666be5dbdda0c42703ea6e1a1b23910ecd7537498f47fe6f41",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "*",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows general crawlers (*) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-047",
+      "key": "9427604a73e3c0fa938ec49e7c3185e68e76fea328b5db02bf9483eb89903407",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "GPTBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows GPTBot (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-048",
+      "key": "2edfed244e052b7f2025b1c903f1ccb5d52a06c7760c375527b82a3b071085e9",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "ChatGPT-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows ChatGPT-User (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-049",
+      "key": "9bfcdff958878de008f1b3921d6c3c6238e25f5bdabc3387f51d4e55b75e783c",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "OAI-SearchBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows OAI-SearchBot (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-050",
+      "key": "9fddee7247041c2bc5c4343a218b673f95bdd8668a5522bb84e42bd12b5c8391",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "ClaudeBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows ClaudeBot (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-051",
+      "key": "49e525f105c9dddd4f9f01b72754048265d12c7f0eedf8274cdd07592427ea70",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "Claude-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Claude-User (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-052",
+      "key": "88987a17dec2b11549a80174cebad57c0f431222271b1963744c4a9f8bc22d74",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "Claude-SearchBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Claude-SearchBot (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-053",
+      "key": "aa78f05c72ac5d4d54559314a76cd98780686d234c8df58c299dd263b4610140",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "Google-Extended",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Google-Extended (Google) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-054",
+      "key": "30f6b8b5cc7cb57b3366799a830140899808ebfe5cf063bc9b5c9630f1772245",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "PerplexityBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows PerplexityBot (Perplexity) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-055",
+      "key": "3b6088f0fe4934e789f1ad5142f8fd537b5192caf9b9f9b4f51add665d64a5ab",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "Perplexity-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Perplexity-User (Perplexity) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-056",
+      "key": "b2c32b5ed5160252e00be5cc6ac1bd06be32e6613c485be46e61bbc2ba99c62d",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "CCBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows CCBot (Common Crawl) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-057",
+      "key": "8ec606f35270d94997059b6ba34c4190e9c13929fdbe89e66f3a809a9be31a9a",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "Applebot-Extended",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Applebot-Extended (Apple) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-058",
+      "key": "803d7e43214019fc06c338748310d8e0514f6a0149727320e04da00e270bb0dc",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "Amazonbot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Amazonbot (Amazon) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-059",
+      "key": "477545afe5a4c42562d5fe0e78e7ab372131bba83f075ace01dbcaefa74076ce",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "PLATFORM",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "Meta-ExternalAgent",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Meta-ExternalAgent (Meta) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-001",
+          "location": "https://dev.to/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-060",
+      "key": "aeddee26bc6229e7c3976c2125f678b4965a7ac8b42dd2ed55cf1d1e80c8c1af",
+      "check_id": "epi.links.resolve",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": true,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "https://www.example.org/paper",
+      "summary": "The link https://www.example.org/paper answers 404, so it leads to no page.",
+      "evidence": [
+        {
+          "receipt_id": "r-010",
+          "location": "HTTP status",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-061",
+      "key": "52e1b09b3562e50ce11b6295fc317f94c74ffb3b24757abeddfbcf49fbc39e72",
+      "check_id": "epi.links.resolve",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": true,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "https://dev.to/example-author/another-post-3c4d",
+      "summary": "The link https://dev.to/example-author/another-post-3c4d answers 404, so it leads to no page.",
+      "evidence": [
+        {
+          "receipt_id": "r-011",
+          "location": "HTTP status",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-062",
+      "key": "64b87259b441e03a4ca591a717f1ae887a27bcdd162cb620f04f5c64f2755c86",
+      "check_id": "epi.links.resolve",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "skipped links",
+      "summary": "1 of the article body's 3 links is not checked, by design: 1 fragment-only.",
+      "evidence": [
+        {
+          "receipt_id": "r-002",
+          "location": "article body links",
+          "observed": "1 fragment-only",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-063",
+      "key": "eddea4c97c42715285edc8d0bf5941364b03eeedc3260c081aea6d50108f3c2d",
+      "check_id": "epi.links.resolve",
+      "check_version": "1",
+      "status": "RECOMMENDATION",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "epi.links.resolve.fix-link:https://www.example.org/paper",
+      "summary": "Update or remove the article's link to https://www.example.org/paper.",
+      "evidence": [],
+      "rationale": "The link names https://www.example.org/paper, which answers 404: HTTP defines 404 as no current representation of the resource and 410 as gone (RFC 9110).",
+      "based_on": [
+        "f-060"
+      ],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-064",
+      "key": "15a1bf8e523613c44dd198d2434be3d7bdd318708933b732bee09aaf9bac8cb0",
+      "check_id": "epi.links.resolve",
+      "check_version": "1",
+      "status": "RECOMMENDATION",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://dev.to/example-author/a-synthetic-post-1a2b",
+      "target": "epi.links.resolve.fix-link:https://dev.to/example-author/another-post-3c4d",
+      "summary": "Update or remove the article's link to https://dev.to/example-author/another-post-3c4d.",
+      "evidence": [],
+      "rationale": "The link names https://dev.to/example-author/another-post-3c4d, which answers 404: HTTP defines 404 as no current representation of the resource and 410 as gone (RFC 9110).",
+      "based_on": [
+        "f-061"
+      ],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-065",
       "key": "c9e7e2b00453f6a4d2a8cc17a871727b3ce2f359e88e4fcbcbad99de8f0fa339",
       "check_id": "epi.canonical.resolves",
       "check_version": "1",
@@ -1166,7 +1735,7 @@
       "would_require": null
     },
     {
-      "id": "f-044",
+      "id": "f-066",
       "key": "c6662464f84e8fb5635c2426345b8f77e26d65672a4e53452920ab673b71ba7c",
       "check_id": "epi.canonical.resolves",
       "check_version": "1",
@@ -1178,7 +1747,7 @@
       "summary": "The canonical URL https://dev.to/example-author/two-canonicals-5e6f answers 404, so it names no page.",
       "evidence": [
         {
-          "receipt_id": "r-009",
+          "receipt_id": "r-012",
           "location": "HTTP status",
           "observed": "404",
           "searched_for": null
@@ -1191,7 +1760,7 @@
       "would_require": null
     },
     {
-      "id": "f-045",
+      "id": "f-067",
       "key": "1066c9801ecc7cd736bd83354ac76dc4306d186251d5747fa832b765bade30b3",
       "check_id": "epi.canonical.resolves",
       "check_version": "1",
@@ -1204,10 +1773,822 @@
       "evidence": [],
       "rationale": "A canonical URL names the preferred URL for the page (RFC 6596), and https://dev.to/example-author/two-canonicals-5e6f answers 404, so it names no page.",
       "based_on": [
-        "f-044"
+        "f-066"
       ],
       "reason_code": null,
       "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-068",
+      "key": "0bba916bfa4239acb74407a4561272bd26a0401e5aa6abb0106ddf04a6fe3a92",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "*",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows general crawlers (*) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-069",
+      "key": "7ff0f10c89d58165ed6bf276e5f7dad0f8efdc644bc0caf9b7db0fa01f54ea8f",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "GPTBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows GPTBot (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-070",
+      "key": "22993fe26b6dcdd6d90dba69dc0a019aa9116fe22dd34d6fef564fa070fe3084",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "ChatGPT-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows ChatGPT-User (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-071",
+      "key": "03b6bc5e3c9ebe25f613fcdc1a53569d76bb26ccb09c14430280061f1fcf6a2c",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "OAI-SearchBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows OAI-SearchBot (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-072",
+      "key": "a20f2b45cd83b7842542ed495b7d99c6e3a025ecac8222e5c4187366ee0beefa",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "ClaudeBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows ClaudeBot (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-073",
+      "key": "2276cd83fde84debd273428ff36af98056d488c16e76f9aab034fd8ec5e87401",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "Claude-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Claude-User (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-074",
+      "key": "bc574e702ecd187839c4bed58fdb687cad694e8176d4aa57b76806ff74431dc9",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "Claude-SearchBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Claude-SearchBot (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-075",
+      "key": "2fcd3c8fde72242ced2fcae4439738b9eddfd29cb06a577a4fc362228a9b2148",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "Google-Extended",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Google-Extended (Google) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-076",
+      "key": "8ff5428ac120df402e89263d7ac05f50353cccea60248209d08b132511e07484",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "PerplexityBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows PerplexityBot (Perplexity) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-077",
+      "key": "91dc05b214969788679d1c179acb98b08b8ef9973722f977b7b5fb6d9aee6f1c",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "Perplexity-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Perplexity-User (Perplexity) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-078",
+      "key": "e80b0e5442178cb30df3e244506974c0b8df8ec52b50a2c2c63c180aedbc1d62",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "CCBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows CCBot (Common Crawl) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-079",
+      "key": "e7b367c6e59a5881769c28020be1240d96d25eb1762e8148d37900cdbf254065",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "Applebot-Extended",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Applebot-Extended (Apple) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-080",
+      "key": "82845a77550555689b32061febac09fc37e76bda695debfafa8cdabd5bc423df",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "Amazonbot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Amazonbot (Amazon) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-081",
+      "key": "0721c5567bdddf3f09be33abab584822ae5ccda2ad80c05b05e91ebce06a9d6b",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "Meta-ExternalAgent",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Meta-ExternalAgent (Meta) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-082",
+      "key": "7886da1cf8400759e91a9659fe0891b01ecfe531a9483b23bb755e844308657f",
+      "check_id": "epi.sitemap.listed",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "No sitemap was found: Cernis looked in robots.txt and at https://blog.example.com/sitemap.xml (answered 404); https://blog.example.com/wp-sitemap.xml (answered 404).",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "robots.txt",
+          "observed": null,
+          "searched_for": "a Sitemap: line"
+        },
+        {
+          "receipt_id": "r-013",
+          "location": "https://blog.example.com/sitemap.xml",
+          "observed": "answered 404",
+          "searched_for": null
+        },
+        {
+          "receipt_id": "r-014",
+          "location": "https://blog.example.com/wp-sitemap.xml",
+          "observed": "answered 404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-083",
+      "key": "96c99a3b2b5a0413afb9b2fb5f59d7e068236ba36938683bef0e34560edbbe3e",
+      "check_id": "epi.links.resolve",
+      "check_version": "1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/two-canonicals/",
+      "target": "",
+      "summary": "The article body has no links.",
+      "evidence": [
+        {
+          "receipt_id": "r-004",
+          "location": "article body",
+          "observed": null,
+          "searched_for": "an <a href> element"
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-084",
+      "key": "b0c0cbf62dba0f1b48b1ec14fceed4100f6ab7b14deac29b86fb0e5d244a0f70",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "*",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows general crawlers (*) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-085",
+      "key": "1c3988f1cb7b42e7f3c24905c3cae8b98d301ea1bb8c2344dc67d24c908a1365",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "GPTBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows GPTBot (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-086",
+      "key": "28e2bd5b821bff65f346cd8b4f3b195e8737c202e5be106bf0c02ca7f679b06c",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "ChatGPT-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows ChatGPT-User (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-087",
+      "key": "8978a04d4788e7a67fec689eea98e07ffe63389a4a58fa7c859d58222740f816",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "OAI-SearchBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows OAI-SearchBot (OpenAI) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-088",
+      "key": "acaabde461015143b4f5e968af46dff64509300fa50f5b388c13ceed8e9cebc0",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "ClaudeBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows ClaudeBot (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-089",
+      "key": "44b2b7ee164b49bde0bdb57fe2bc663d00337739d9d1914cbbbb5399e52ce5c1",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "Claude-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Claude-User (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-090",
+      "key": "a62fbf0aec0d0d85bb03de2187ec7287422a7616e155458843ab200d68e22b58",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "Claude-SearchBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Claude-SearchBot (Anthropic) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-091",
+      "key": "8c89e792cdaa615c8cccd942d7f8d447b16b7b585530265cd4eeda8bef6c06fa",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "Google-Extended",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Google-Extended (Google) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-092",
+      "key": "6a626dfaa3206ede98a241d57e0e8fb0ceb2f04ad2d5e1fdb580af65c2a6d93b",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "PerplexityBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows PerplexityBot (Perplexity) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-093",
+      "key": "177b7f36dea49c392cfcc70cb6380348ca78f066f613a208234a8eb344399b5c",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "Perplexity-User",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Perplexity-User (Perplexity) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-094",
+      "key": "5e9635e0069a4415c6d47f3d0ce7d28283e6335c191d6b9440e057737e5298b5",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "CCBot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows CCBot (Common Crawl) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-095",
+      "key": "92d946bc545d9ab52f0c5629a8b773e766b52f1958bd1a448c0715055f2fb2a2",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "Applebot-Extended",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Applebot-Extended (Apple) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-096",
+      "key": "2059b197d8d3cc2f018345cc426b5d21acee57f1534a690557cb6454b080812e",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "Amazonbot",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Amazonbot (Amazon) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-097",
+      "key": "5bfadfd10522f597cb0f5fe0a9e39d00f00a339735d396866d21ee2f919af088",
+      "check_id": "epi.robots.access",
+      "check_version": "1+c1+m1",
+      "status": "OBSERVED",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "Meta-ExternalAgent",
+      "summary": "robots.txt answered 404, so under RFC 9309 it allows Meta-ExternalAgent (Meta) to fetch this page.",
+      "evidence": [
+        {
+          "receipt_id": "r-003",
+          "location": "https://blog.example.com/robots.txt",
+          "observed": "404",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": null,
+      "question": null,
+      "would_require": null
+    },
+    {
+      "id": "f-098",
+      "key": "274d41d366a357d26df91eaa6a46039faba7169d6df57ec9fba7d0587170b640",
+      "check_id": "epi.sitemap.listed",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether the site's sitemap lists the page is not determinable: the page was not read (the request timed out).",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the site's sitemap lists the page",
+      "would_require": null
+    },
+    {
+      "id": "f-099",
+      "key": "7825bdbbe1ace5710e45dcce2fe7d687d7dc2129fc0bddb834f519c217fcc5b6",
+      "check_id": "epi.links.resolve",
+      "check_version": "1",
+      "status": "NOT_DETERMINABLE",
+      "actor": "AUTHOR",
+      "defect": false,
+      "subject_url": "https://blog.example.com/gone/",
+      "target": "",
+      "summary": "Whether the article body's links resolve is not determinable: the page was not read (the request timed out).",
+      "evidence": [
+        {
+          "receipt_id": "r-005",
+          "location": "error_kind",
+          "observed": "TIMEOUT",
+          "searched_for": null
+        }
+      ],
+      "rationale": null,
+      "based_on": [],
+      "reason_code": "FETCH_FAILED",
+      "question": "Whether the article body's links resolve",
       "would_require": null
     }
   ],
@@ -1334,8 +2715,78 @@
     },
     {
       "id": "r-009",
+      "requested_url": "https://www.example.org/robots.txt",
+      "final_url": "https://www.example.org/robots.txt",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-010",
+      "requested_url": "https://www.example.org/paper",
+      "final_url": "https://www.example.org/paper",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-011",
+      "requested_url": "https://dev.to/example-author/another-post-3c4d",
+      "final_url": "https://dev.to/example-author/another-post-3c4d",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-012",
       "requested_url": "https://dev.to/example-author/two-canonicals-5e6f",
       "final_url": "https://dev.to/example-author/two-canonicals-5e6f",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-013",
+      "requested_url": "https://blog.example.com/sitemap.xml",
+      "final_url": "https://blog.example.com/sitemap.xml",
+      "redirect_chain": [],
+      "status_code": 404,
+      "error_kind": "NONE",
+      "fetched_at": "2026-10-29T12:00:00+00:00",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "body_truncated_at": null,
+      "headers": {},
+      "cernis_version": "0.1.0.dev0",
+      "user_agent": "Cernis/0.1.0.dev0 (+https://github.com/kenwalger/cernis)"
+    },
+    {
+      "id": "r-014",
+      "requested_url": "https://blog.example.com/wp-sitemap.xml",
+      "final_url": "https://blog.example.com/wp-sitemap.xml",
       "redirect_chain": [],
       "status_code": 404,
       "error_kind": "NONE",

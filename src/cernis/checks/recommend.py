@@ -188,10 +188,10 @@ def _evidence_value(finding: Finding, location: str) -> str | None:
 
 
 def resource_recommendations(findings: list[Finding], *, new_id: NewId) -> list[Finding]:
-    """Recommend a change for each canonical or og:image defect the author can act on.
+    """Recommend a change for each canonical, og:image, or link defect the author can act on.
 
-    :param findings: Observed ``epi.canonical.resolves`` and
-        ``epi.og.image.resolves`` findings.
+    :param findings: Observed ``epi.canonical.resolves``,
+        ``epi.og.image.resolves``, and ``epi.links.resolve`` findings.
     :param new_id: The run's finding id source.
     :return: The recommendations.
     """
@@ -206,6 +206,17 @@ def resource_recommendations(findings: list[Finding], *, new_id: NewId) -> list[
             advice.append(
                 _recommend(
                     "epi.canonical.resolves.fix-canonical",
+                    finding,
+                    finding.target,
+                    new_id,
+                    url=finding.target,
+                    status=status,
+                )
+            )
+        elif finding.check_id == "epi.links.resolve":
+            advice.append(
+                _recommend(
+                    "epi.links.resolve.fix-link",
                     finding,
                     finding.target,
                     new_id,
@@ -306,3 +317,30 @@ def pair_recommendations(
                 )
             )
     return advice
+
+
+def sitemap_recommendation(
+    finding: Finding, *, url: str, section: str, others: int, new_id: NewId
+) -> list[Finding]:
+    """Recommend adding a page to the sitemap, for an ``epi.sitemap.listed`` defect.
+
+    :param finding: The ``epi.sitemap.listed`` finding.
+    :param url: The page's URL.
+    :param section: The section the sitemap lists other pages under.
+    :param others: How many other pages it lists there.
+    :param new_id: The run's finding id source.
+    :return: One recommendation for an author-actionable defect, else none.
+    """
+    if not (finding.status is Status.OBSERVED and finding.defect and finding.actor in _ACTIONABLE):
+        return []
+    return [
+        _recommend(
+            "epi.sitemap.listed.add-page",
+            finding,
+            "",
+            new_id,
+            url=url,
+            section=section,
+            count=str(others),
+        )
+    ]

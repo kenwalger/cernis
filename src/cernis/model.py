@@ -52,6 +52,9 @@ class ReasonCode(StrEnum):
     """The host resolves to a non-public address, so Cernis did not contact it (ADR-005)."""
     REQUIRES_RENDERING = "REQUIRES_RENDERING"
     AMBIGUOUS = "AMBIGUOUS"
+    LIMIT_REACHED = "LIMIT_REACHED"
+    """Cernis did not fetch something because a politeness limit was reached
+    (links per page, links per host, sitemap documents); ADR-001 amendment 2."""
 
 
 NO_ATTEMPT_REASONS: frozenset[ReasonCode] = frozenset(
@@ -594,6 +597,71 @@ class RunPair:
                 raise RunError(f"RunPair: {name} must be a non-empty URL string")
 
 
+SOURCE_KINDS: frozenset[str] = frozenset({"sitemap", "dev-user"})
+"""Where a run's URLs can come from besides the command line."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class SourceNote:
+    """A fact a URL source recorded about one URL, such as an article not cross-posted.
+
+    :param url: The URL the note is about.
+    :param note: The fact, in one sentence.
+    """
+
+    url: str
+    note: str
+
+    def __post_init__(self) -> None:
+        """Check both fields.
+
+        :raises RunError: If either is empty.
+        """
+        for name in ("url", "note"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise RunError(f"SourceNote: {name} must be non-empty text")
+
+
+@dataclass(frozen=True, kw_only=True)
+class RunSource:
+    """Where a run's URLs came from: a sitemap, or a DEV user's articles.
+
+    :param kind: ``sitemap`` or ``dev-user``.
+    :param query: The sitemap URL, or the DEV username.
+    :param receipt_ids: The receipts of every request the listing made, in order.
+    :param listed: The URLs it listed for auditing, in order, after any
+        prefix filter and limit.
+    :param notes: Facts about URLs it listed or left out, in order.
+    """
+
+    kind: str
+    query: str
+    receipt_ids: tuple[str, ...]
+    listed: tuple[str, ...]
+    notes: tuple[SourceNote, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Check the fields.
+
+        :raises RunError: If a field breaks its rule.
+        """
+        if self.kind not in SOURCE_KINDS:
+            raise RunError(f"RunSource: kind must be one of {sorted(SOURCE_KINDS)}")
+        if not isinstance(self.query, str) or not self.query.strip():
+            raise RunError("RunSource: query must be non-empty text")
+        for name in ("receipt_ids", "listed"):
+            value = getattr(self, name)
+            if not isinstance(value, tuple) or not all(
+                isinstance(item, str) and item for item in value
+            ):
+                raise RunError(f"RunSource: {name} must be a tuple of non-empty strings")
+        if not isinstance(self.notes, tuple) or not all(
+            isinstance(note, SourceNote) for note in self.notes
+        ):
+            raise RunError("RunSource: notes must be a tuple of SourceNote")
+
+
 @dataclass(frozen=True, kw_only=True)
 class Run:
     """One audit: the receipts, snapshots, and findings it produced, checked as a whole.
@@ -607,7 +675,8 @@ class Run:
     - every ``based_on`` id names a finding in the run, and that finding is
       ``OBSERVED``;
     - every snapshot is of a receipt in the run, at most one per receipt;
-    - every pair names two different subjects of the run, and no pair repeats.
+    - every pair names two different subjects of the run, and no pair repeats;
+    - every source's receipts are in the run.
 
     :param id: The run id, such as ``20261030T120000Z``.
     :param started_at: When the run started, in UTC.
@@ -619,6 +688,8 @@ class Run:
     :param findings: Every finding, in report order.
     :param pairs: The original and copy pairs audited, in order; empty for a
         run of single pages.
+    :param sources: Where the URLs came from, when not the command line or a
+        pair map (Session 5b).
     :raises RunError: If any run rule is broken.
     """
 
@@ -631,6 +702,7 @@ class Run:
     snapshots: tuple[Snapshot, ...]
     findings: tuple[Finding, ...]
     pairs: tuple[RunPair, ...] = ()
+    sources: tuple[RunSource, ...] = ()
 
     def __post_init__(self) -> None:
         """Check the run as a whole.
@@ -668,6 +740,15 @@ class Run:
         if repeated:
             raise RunError(f"{owner}: receipt id repeated: {', '.join(repeated)}")
         known = set(receipt_ids)
+
+        for source in self.sources:
+            if not isinstance(source, RunSource):
+                raise RunError(f"{owner}: sources must be a tuple of RunSource")
+            missing = [rid for rid in source.receipt_ids if rid not in known]
+            if missing:
+                raise RunError(
+                    f"{owner}: source {source.query!r} cites receipt {missing[0]!r}, not in the run"
+                )
 
         snapshot_ids = [snap.receipt_id for snap in self.snapshots]
         for receipt_id in snapshot_ids:

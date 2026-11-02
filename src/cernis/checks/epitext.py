@@ -41,14 +41,14 @@ from cernis.checks.peritext import actor_for
 from cernis.checks.registry import check
 from cernis.fetch import FetchResult
 from cernis.model import Actor, ErrorKind, Evidence, Finding, ReasonCode, Receipt, Status
-from cernis.parse.extractors import SiteType
+from cernis.parse.extractors import Article, SiteType
 from cernis.parse.html import ParsedPage
 from cernis.urls import UrlMatch, compare_urls, is_absolute_http_url, normalize_url
 
 NewId = Callable[[], str]
 """Returns the next finding id in the run."""
 
-_DEV_PLATFORM_EPI = frozenset({"epi.og.image.resolves"})
+_DEV_PLATFORM_EPI = frozenset({"epi.og.image.resolves", "epi.robots.access"})
 
 
 def epi_actor(site: SiteType | None, check_id: str) -> Actor:
@@ -57,7 +57,8 @@ def epi_actor(site: SiteType | None, check_id: str) -> Actor:
     :param site: The page's site type.
     :param check_id: The check.
     :return: As for peritext; on DEV, the ``og:image`` (DEV's generated
-        social image) is the platform's, and the canonical is the author's.
+        social image) and robots.txt are the platform's, and the canonical
+        and the article's links are the author's.
     """
     if site is SiteType.DEV and check_id in _DEV_PLATFORM_EPI:
         return Actor.PLATFORM
@@ -73,6 +74,8 @@ class FetchedPage:
     :param result: The fetch.
     :param outcome: Whether Cernis read it whole, and if not, why not.
     :param page: What was read, or ``None`` if it was not read whole.
+    :param article: The article body as the extractor found it, or ``None``
+        if the page was not read whole.
     """
 
     subject: str
@@ -80,6 +83,7 @@ class FetchedPage:
     result: FetchResult
     outcome: Readable | Unreadable
     page: ParsedPage | None
+    article: Article | None = None
 
     @property
     def base(self) -> str:

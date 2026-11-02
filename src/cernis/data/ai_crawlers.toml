@@ -1,0 +1,89 @@
+# The AI crawlers and robots.txt product tokens epi.robots.access reports on.
+#
+# Each token was checked against its operator's own documentation (the
+# source URL) in Session 5b, on 2026-11-02. Raising `version` is a checker
+# change: it is part of every epi.robots.access finding's check version.
+#
+# Left out: Bytespider (ByteDance). Only third-party pages describe it; no
+# page from ByteDance documenting the token could be found, so it could not
+# be confirmed.
+
+version = 1
+
+[[crawler]]
+token = "GPTBot"
+operator = "OpenAI"
+purpose = "collects content for training OpenAI's foundation models"
+source = "https://developers.openai.com/api/docs/bots"
+
+[[crawler]]
+token = "ChatGPT-User"
+operator = "OpenAI"
+purpose = "fetches pages for user actions in ChatGPT and Custom GPTs"
+source = "https://developers.openai.com/api/docs/bots"
+
+[[crawler]]
+token = "OAI-SearchBot"
+operator = "OpenAI"
+purpose = "surfaces websites in ChatGPT's search features"
+source = "https://developers.openai.com/api/docs/bots"
+
+[[crawler]]
+token = "ClaudeBot"
+operator = "Anthropic"
+purpose = "collects content that may contribute to training Anthropic's models"
+source = "https://support.claude.com/en/articles/8896518"
+
+[[crawler]]
+token = "Claude-User"
+operator = "Anthropic"
+purpose = "fetches pages when a Claude user asks a question"
+source = "https://support.claude.com/en/articles/8896518"
+
+[[crawler]]
+token = "Claude-SearchBot"
+operator = "Anthropic"
+purpose = "analyzes content for the quality of Claude's search results"
+source = "https://support.claude.com/en/articles/8896518"
+
+[[crawler]]
+token = "Google-Extended"
+operator = "Google"
+purpose = "a product token, not a crawler: controls use of content for training Gemini models"
+source = "https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers"
+
+[[crawler]]
+token = "PerplexityBot"
+operator = "Perplexity"
+purpose = "surfaces and links websites in Perplexity's search results"
+source = "https://docs.perplexity.ai/guides/bots"
+
+[[crawler]]
+token = "Perplexity-User"
+operator = "Perplexity"
+purpose = "fetches pages for user actions in Perplexity"
+source = "https://docs.perplexity.ai/guides/bots"
+
+[[crawler]]
+token = "CCBot"
+operator = "Common Crawl"
+purpose = "builds Common Crawl's open web archive, widely used for training models"
+source = "https://commoncrawl.org/ccbot"
+
+[[crawler]]
+token = "Applebot-Extended"
+operator = "Apple"
+purpose = "a product token, not a crawler: controls use of content for training Apple's foundation models"
+source = "https://support.apple.com/en-us/119829"
+
+[[crawler]]
+token = "Amazonbot"
+operator = "Amazon"
+purpose = "crawls the web for Amazon's services"
+source = "https://developer.amazon.com/amazonbot"
+
+[[crawler]]
+token = "Meta-ExternalAgent"
+operator = "Meta"
+purpose = "collects content for training Meta's AI models and for indexing"
+source = "https://developers.facebook.com/docs/sharing/webmasters/web-crawlers"

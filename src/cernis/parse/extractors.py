@@ -88,7 +88,7 @@ class SitePrefix:
     site: SiteType
 
 
-def _under(url: str, prefix: str) -> bool:
+def under_prefix(url: str, prefix: str) -> bool:
     """Tell whether a normalized URL is at or under a normalized prefix.
 
     Matching is by whole path segments, so ``/blog`` covers ``/blog`` and
@@ -102,6 +102,22 @@ def _under(url: str, prefix: str) -> bool:
         return True
     head = prefix if prefix.endswith("/") else prefix + "/"
     return url.startswith(head) or url.startswith(prefix + "?")
+
+
+def longest_prefix(url: str, prefixes: Sequence[SitePrefix]) -> str | None:
+    """Find the longest prefix rule a URL is under.
+
+    :param url: The URL.
+    :param prefixes: The prefix rules.
+    :return: That rule's prefix, normalized, or ``None`` if none covers the URL.
+    """
+    target = normalize_url(url)
+    best: str | None = None
+    for rule in prefixes:
+        prefix = normalize_url(rule.prefix)
+        if under_prefix(target, prefix) and (best is None or len(prefix) > len(best)):
+            best = prefix
+    return best
 
 
 def prefix_site(url: str, prefixes: Sequence[SitePrefix]) -> SiteType | None:
@@ -120,7 +136,7 @@ def prefix_site(url: str, prefixes: Sequence[SitePrefix]) -> SiteType | None:
     best: tuple[int, SiteType] | None = None
     for rule in prefixes:
         prefix = normalize_url(rule.prefix)
-        if _under(target, prefix) and (best is None or len(prefix) > best[0]):
+        if under_prefix(target, prefix) and (best is None or len(prefix) > best[0]):
             best = (len(prefix), rule.site)
     return best[1] if best else None
 

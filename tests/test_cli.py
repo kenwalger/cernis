@@ -311,7 +311,7 @@ def test_audit_prints_a_markdown_report(
     out = capsys.readouterr().out
     assert code == 0
     assert out.startswith("# Cernis audit: A Post With Two Canonicals\n")
-    assert "## Observed (15)" in out
+    assert "## Observed (32)" in out
     assert "## Recommendations (1)" in out
     assert "extractor wordpress.entry 1+n1, declared" in out
 
@@ -610,7 +610,8 @@ def test_pairs_audits_every_pair_in_the_map_fetching_each_url_once(
     assert f"- Pair 1: original {ORIGINAL}; copy {COPY}" in out
     assert f"- Pair 2: original {ORIGINAL}; copy {second}" in out
     # A page in two pairs is shown under the first pair only.
-    assert out.count(f"#### Original: {ORIGINAL}") == 1
+    observed = out.split("## Observed", 1)[1].split("## Recommendations", 1)[0]
+    assert observed.count(f"#### Original: {ORIGINAL}") == 1
     assert f"### Pair: {second} (copy of {ORIGINAL})" in out
     assert "extractor generic 1+n1, declared" in out
 

@@ -175,6 +175,25 @@ TEMPLATES: tuple[RecommendationTemplate, ...] = (
             "object, and {url} {problem}."
         ),
     ),
+    RecommendationTemplate(
+        id="epi.links.resolve.fix-link",
+        check_id="epi.links.resolve",
+        action="Update or remove the article's link to {url}.",
+        rationale=(
+            "The link names {url}, which answers {status}: HTTP defines 404 as no "
+            "current representation of the resource and 410 as gone (RFC 9110)."
+        ),
+    ),
+    RecommendationTemplate(
+        id="epi.sitemap.listed.add-page",
+        check_id="epi.sitemap.listed",
+        action="Add {url} to the site's sitemap.",
+        rationale=(
+            "The sitemaps protocol (sitemaps.org) lists the URLs on a site that are "
+            "available for crawling, and the site's sitemap lists {count} other pages "
+            "under {section} but not {url}."
+        ),
+    ),
 )
 """Every recommendation template in the package."""
 

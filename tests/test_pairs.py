@@ -48,7 +48,8 @@ def test_the_documented_example_is_valid() -> None:
     doc = (Path(__file__).parents[1] / "docs" / "PAIR-MAP.md").read_text(encoding="utf-8")
     example = doc.split("```toml\n", 1)[1].split("```", 1)[0]
 
-    assert len(parse_pair_map(example).pairs) == 2
+    # Two pairs with one copy each, and one with two copies (Session 5b).
+    assert len(parse_pair_map(example).pairs) == 4
 
 
 def test_a_file_is_loaded(tmp_path: Path) -> None:
@@ -262,3 +263,51 @@ copy = { url = "https://mirror.example/post/", site = "owned" }
         ("https://notes.example/", SiteType.OWNED)
     ]
     assert parsed.site_types() == {"https://mirror.example/post": SiteType.OWNED}
+
+
+# One original, several copies (Session 5b)
+
+
+def test_copies_give_one_pair_each_sharing_the_original() -> None:
+    """DEV and CoderLegion copies of one original."""
+    text = """
+format = 1
+
+[[pair]]
+original = { url = "https://www.kenwalger.com/blog/a-post/", site = "wordpress" }
+copies = [
+  { url = "https://dev.to/kenwalger/a-post-1a2b" },
+  { url = "https://coderlegion.com/123/a-post" },
+]
+"""
+
+    loaded = parse_pair_map(text)
+
+    assert [(p.original.url, p.copy.url) for p in loaded.pairs] == [
+        ("https://www.kenwalger.com/blog/a-post/", "https://dev.to/kenwalger/a-post-1a2b"),
+        ("https://www.kenwalger.com/blog/a-post/", "https://coderlegion.com/123/a-post"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("", "exactly one of copy or copies"),
+        (
+            'copy = { url = "https://b.example/" }\ncopies = [{ url = "https://c.example/" }]\n',
+            "exactly one of copy or copies",
+        ),
+        ("copies = []\n", "non-empty array"),
+        ('copies = [{ url = "https://a.example/x" }]\n', "copy 1 is the same URL"),
+        (
+            'copies = [{ url = "https://b.example/" }, { url = "https://B.example" }]\n',
+            "listed as a copy twice",
+        ),
+        ('copies = [{ url = "/relative" }]\n', "pair 1, copy 1: url must be an absolute"),
+    ],
+)
+def test_copies_rules_are_enforced(body: str, message: str) -> None:
+    """Each mistake is named, with where it is."""
+    text = f'format = 1\n[[pair]]\noriginal = {{ url = "https://a.example/x" }}\n{body}'
+    with pytest.raises(PairMapError, match=message):
+        parse_pair_map(text)

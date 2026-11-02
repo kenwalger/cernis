@@ -355,7 +355,7 @@ class _BodyDecoder:
             raise _UnreadableBodyError(str(exc)) from exc
 
 
-def _url_problem(url: str) -> str | None:
+def url_problem(url: str) -> str | None:
     """Say why Cernis will not fetch a URL it was asked for, if it will not.
 
     :param url: The URL.
@@ -552,7 +552,7 @@ class Fetcher:
         :return: What the fetch did, with a receipt per attempt.
         :raises FetchError: If the URL cannot be fetched at all.
         """
-        problem = _url_problem(url)
+        problem = url_problem(url)
         if problem is not None:
             raise FetchError(problem)
         url = str(httpx.URL(url))
@@ -619,6 +619,33 @@ class Fetcher:
             return retry_after if retry_after <= self.config.backoff_cap else None
         return min(self.config.backoff_cap, self.config.backoff_base * 2.0 ** (number - 1))
 
+    def robots_policy(self, url: str) -> tuple[RobotsPolicy, tuple[Receipt, ...]]:
+        """Return the robots.txt policy for a URL's origin, fetching it once per run.
+
+        For checks that read robots.txt for other crawlers (``epi.robots.access``)
+        and for its ``Sitemap:`` lines. It is the same policy, from the same
+        fetch, that Cernis's own requests to that origin were decided by.
+
+        :param url: An absolute http or https URL.
+        :return: The policy, and the receipts of the robots.txt fetch.
+        :raises FetchError: If the URL cannot be fetched at all.
+        """
+        problem = url_problem(url)
+        if problem is not None:
+            raise FetchError(problem)
+        robots_url = robots_url_for(str(httpx.URL(url)))
+        self._robots_entry(robots_url)
+        return self._robots[robots_url]
+
+    def _robots_entry(self, robots_url: str) -> None:
+        """Fetch an origin's robots.txt, unless this run already has.
+
+        :param robots_url: The robots.txt URL.
+        """
+        if robots_url not in self._robots:
+            receipts, body, _ = self._attempts(robots_url, None)
+            self._robots[robots_url] = (RobotsPolicy(robots_url, receipts[-1], body), receipts)
+
     def _allowed(self, url: str, decisions: list[RobotsDecision]) -> bool:
         """Check ``url`` against its origin's robots.txt, fetching that once per run.
 
@@ -627,9 +654,7 @@ class Fetcher:
         :return: Whether Cernis may fetch it.
         """
         robots_url = robots_url_for(url)
-        if robots_url not in self._robots:
-            receipts, body, _ = self._attempts(robots_url, None)
-            self._robots[robots_url] = (RobotsPolicy(robots_url, receipts[-1], body), receipts)
+        self._robots_entry(robots_url)
         decision = self._robots[robots_url][0].decide(url, USER_AGENT)
         if all(known.url != url for known in decisions):
             decisions.append(decision)

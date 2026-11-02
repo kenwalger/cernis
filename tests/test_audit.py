@@ -81,12 +81,14 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
     assert run.finished_at > run.started_at
     assert run.subjects == (PAGE,)
     # The page, then its second canonical (its first is the page itself, so
-    # its fetch is reused).
+    # its fetch is reused), then the two places a sitemap is looked for.
     assert [r.requested_url for r in run.receipts] == [
         "https://blog.example.com/robots.txt",
         PAGE,
         "https://dev.to/robots.txt",
         "https://dev.to/example-author/two-canonicals-5e6f",
+        "https://blog.example.com/sitemap.xml",
+        "https://blog.example.com/wp-sitemap.xml",
     ]
     (snapshot,) = run.snapshots
     assert (snapshot.receipt_id, snapshot.extractor_id, snapshot.extractor_selection) == (
@@ -95,9 +97,10 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
         ExtractorSelection.DECLARED,
     )
     statuses = [f.status for f in run.findings]
-    assert statuses.count(Status.OBSERVED) == 15
+    # 14 peritext, 2 canonicals, 14 robots.access, the sitemap, and the links.
+    assert statuses.count(Status.OBSERVED) == 32
     assert statuses.count(Status.RECOMMENDATION) == 1
-    assert [f.id for f in run.findings] == [f"f-{n:03d}" for n in range(1, 17)]
+    assert [f.id for f in run.findings] == [f"f-{n:03d}" for n in range(1, 34)]
     (advice,) = [f for f in run.findings if f.status is Status.RECOMMENDATION]
     (based,) = advice.based_on
     assert next(f for f in run.findings if f.id == based).check_id == "peri.canonical.single"
@@ -111,15 +114,30 @@ def test_run_ids_name_the_start_in_utc() -> None:
 def _not_determinable(run: object) -> list[Finding]:
     """Check an unread page's findings and return them.
 
+    An unread page still gets ``epi.robots.access`` (one finding per crawler
+    name: answered when Cernis fetched its robots.txt, else not determinable),
+    and one NOT_DETERMINABLE finding each for ``epi.sitemap.listed`` and
+    ``epi.links.resolve`` with the page's own reason (Session 5b). Every
+    peritext question is NOT_DETERMINABLE.
+
     :param run: The run.
-    :return: Its findings, all NOT_DETERMINABLE, one per question.
+    :return: Its peritext findings, all NOT_DETERMINABLE, one per question.
     """
-    findings = list(run.findings)  # type: ignore[attr-defined]
+    every = list(run.findings)  # type: ignore[attr-defined]
+    robots = [f for f in every if f.check_id == "epi.robots.access"]
+    assert len(robots) == 14
+    around = [f for f in every if f.check_id in ("epi.sitemap.listed", "epi.links.resolve")]
+    assert [f.check_id for f in around] == ["epi.sitemap.listed", "epi.links.resolve"]
+    findings = [f for f in every if f.check_id.startswith("peri.")]
+    assert len(findings) + len(robots) + len(around) == len(every)
     assert [f.status for f in findings] == [Status.NOT_DETERMINABLE] * len(QUESTIONS)
     assert [(f.check_id, f.target, f.question) for f in findings] == list(QUESTIONS)
     assert run.snapshots == ()  # type: ignore[attr-defined]
     assert len({f.reason_code for f in findings}) == 1
     assert len({f.evidence for f in findings}) == 1
+    assert {(f.status, f.reason_code) for f in around} == {
+        (Status.NOT_DETERMINABLE, findings[0].reason_code)
+    }
     return findings
 
 

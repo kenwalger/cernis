@@ -292,6 +292,17 @@ def report_markdown(run: Run) -> str:
         "",
         *_subject_lines(run),
     ]
+    for source in run.sources:
+        what = "DEV user" if source.kind == "dev-user" else "sitemap"
+        receipts = ", ".join(source.receipt_ids) or "none"
+        lines += [
+            "",
+            f"Source: {what} {escape(source.query)}: {len(source.listed)} listed "
+            f"(receipts {receipts})",
+        ]
+        if source.notes:
+            lines.append("")
+            lines += [f"- {escape(note.url)}: {escape(note.note)}" for note in source.notes]
     sections = (
         ("Observed", Status.OBSERVED, counts["observed"]),
         ("Recommendations", Status.RECOMMENDATION, counts["recommendations"]),

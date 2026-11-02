@@ -98,6 +98,22 @@ uses [Semantic Versioning](https://semver.org/).
 - `peri.og.url_matches_canonical` 2: a `DIFFERENT` defect cites the Open
   Graph protocol, which defines `og:url` as the object's canonical URL.
 - Five recommendation templates for the epitext checks.
+- `peri.robots.directives`: robots meta tags and the `X-Robots-Tag` header,
+  as facts.
+- `epi.robots.access`: what robots.txt says for `*` and each AI crawler in the
+  versioned list `src/cernis/data/ai_crawlers.toml` (13 tokens, each with
+  its operator's documentation), never a defect.
+- `epi.sitemap.listed`: sitemap discovery (robots.txt, `sitemap.xml`,
+  `wp-sitemap.xml`), indexes, and gzip; a defect only when the sitemap lists
+  other pages in the section but not this one.
+- `epi.links.resolve`: article-body links, deduplicated and fetched without
+  storing bodies, limited to 100 per page and 5 per external host per run.
+- `ReasonCode.LIMIT_REACHED` (ADR-001 amendment 2).
+- `cernis audit --from-sitemap URL [--include-prefix P]` and
+  `--from-dev-user NAME`, with `--limit` and `--list-only`; the run records
+  its source (`Run.sources`, and `sources` in the JSON report).
+- Pair maps accept `copies = [...]`; `cernis pairs --from-dev-user NAME`.
+- `--max-links-per-page`, `--max-links-per-host`, `--max-sitemap-documents`.
 
 ## [0.0.1] - 2026-10-28
 

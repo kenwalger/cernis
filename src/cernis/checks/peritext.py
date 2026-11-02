@@ -1,4 +1,4 @@
-"""The nine peritext checks (DESIGN.md section 4, "Peritext: on the page").
+"""The ten peritext checks (DESIGN.md section 4, "Peritext: on the page").
 
 Each check reads a :class:`~cernis.parse.ParsedPage` and returns findings,
 following the table's two columns exactly: "Reports" is what every finding
@@ -12,6 +12,8 @@ One finding per check, except where the table says otherwise:
 and ``peri.jsonld.parses`` one per block (``block 1``, ``block 2``, ...; or
 one with an empty target when there are no blocks). ``peri.canonical.absolute``
 gives none when there is no canonical, since there is nothing to assess.
+``peri.robots.directives`` (Session 5b) reads the response's
+``X-Robots-Tag`` header as well as the page's robots ``meta`` tags.
 
 **Actors** (DESIGN.md section 3): on WordPress, and on a site declared
 ``owned``, the author controls everything; on DEV the author controls what
@@ -30,6 +32,7 @@ from collections.abc import Callable
 from urllib.parse import urljoin, urlsplit
 
 from cernis.checks.registry import check
+from cernis.crawlers import crawler_list
 from cernis.model import Actor, Evidence, Finding, ReasonCode, Receipt, Status
 from cernis.parse.extractors import SiteType
 from cernis.parse.html import Canonical, MetaTag, ParsedPage, normalize_text
@@ -58,6 +61,7 @@ _DEV_PLATFORM = frozenset(
         ("peri.lang", ""),
         ("peri.jsonld.parses", ""),
         ("peri.title", ""),
+        ("peri.robots.directives", ""),
     }
 )
 
@@ -607,6 +611,54 @@ def title(ctx: _Context) -> list[Finding]:
     return [ctx.observed("peri.title", summary, [ctx.evidence("head > title", t) for t in titles])]
 
 
+ROBOTS_META_NAMES: frozenset[str] = frozenset({"robots", "googlebot", "googlebot-news", "bingbot"})
+"""``meta`` names read as robots directives, besides each AI crawler's token."""
+
+
+def _robots_meta_names() -> frozenset[str]:
+    """Return every ``meta`` name read as robots directives, lowercased.
+
+    :return: ``robots``, the major search crawlers' names, and each token in
+        the AI crawler list (:mod:`cernis.crawlers`).
+    """
+    return ROBOTS_META_NAMES | {c.token.lower() for c in crawler_list().crawlers}
+
+
+def robots_directives(ctx: _Context) -> list[Finding]:
+    """``peri.robots.directives``: robots ``meta`` tags and the ``X-Robots-Tag`` header.
+
+    Never a defect: excluding a page from indexing may be exactly what the
+    author intends (principle 4). The values are reported as written; Cernis
+    does not interpret them.
+
+    :param ctx: The check context.
+    :return: One finding.
+    """
+    names = _robots_meta_names()
+    tags = [
+        tag for tag in ctx.page.meta if tag.attribute == "name" and tag.key.strip().lower() in names
+    ]
+    header = ctx.receipt.header("x-robots-tag")
+    evidence = [_meta_evidence(ctx, tag) for tag in tags]
+    parts = [f"{tag.key.strip()} meta tag {tag.content!r}" for tag in tags if tag.content]
+    parts += [f"{tag.key.strip()} meta tag with no content" for tag in tags if not tag.content]
+    if header is not None:
+        evidence.append(ctx.evidence("X-Robots-Tag header", header))
+        parts.append(f"X-Robots-Tag header {header!r}")
+    if not evidence:
+        searched = ", ".join(sorted(names))
+        evidence = [
+            ctx.evidence(WHOLE_DOCUMENT, None, f"a <meta> named one of: {searched}"),
+            ctx.evidence("response headers", None, "an X-Robots-Tag header"),
+        ]
+        summary = (
+            "The page declares no robots directives: no robots meta tag and no X-Robots-Tag header."
+        )
+    else:
+        summary = f"The page declares robots directives: {'; '.join(parts)}."
+    return [ctx.observed("peri.robots.directives", summary, evidence)]
+
+
 CHECK_FUNCTIONS: tuple[tuple[str, Callable[[_Context], list[Finding]]], ...] = (
     ("peri.canonical.present", canonical_present),
     ("peri.canonical.single", canonical_single),
@@ -617,6 +669,7 @@ CHECK_FUNCTIONS: tuple[tuple[str, Callable[[_Context], list[Finding]]], ...] = (
     ("peri.lang", lang),
     ("peri.jsonld.parses", jsonld_parses),
     ("peri.title", title),
+    ("peri.robots.directives", robots_directives),
 )
 """Every peritext check, in DESIGN.md order."""
 

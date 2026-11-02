@@ -195,6 +195,11 @@ def test_an_empty_section_says_none(tmp_path: Path) -> None:
     site.add(WORDPRESS_PAGE, respond(200, fixture("wordpress-entry"), HTML))
     site.add(SYNTHETIC_POST, respond(200, b"<html></html>", HTML))
     site.add(WP_IMAGE, respond(200, b"PNG", {"content-type": "image/png"}))
+    # The article body's two links (Session 5b) answer too.
+    site.add("https://www.example.org/paper", respond(200, b"<html></html>", HTML))
+    site.add(
+        "https://blog.example.com/2026/09/an-earlier-post/", respond(200, b"<html></html>", HTML)
+    )
     run = audit(
         [Target(url=WORDPRESS_PAGE, site=SiteType.WORDPRESS)],
         make_fetcher(site, tmp_path),

@@ -96,6 +96,7 @@ class RobotsPolicy:
     def __init__(self, robots_url: str, receipt: Receipt, body: bytes | None) -> None:
         self.robots_url = robots_url
         self.receipt_id = receipt.id
+        self.receipt = receipt
         self._rules: RobotsRules | None = None
         status = receipt.status_code
         if receipt.error_kind is not ErrorKind.NONE or status is None:
@@ -113,11 +114,22 @@ class RobotsPolicy:
         else:
             self.basis = RobotsBasis.UNREACHABLE
 
+    @property
+    def rules(self) -> RobotsRules | None:
+        """The parsed rules, or ``None`` unless the basis is ``RULES``."""
+        return self._rules
+
+    @property
+    def sitemaps(self) -> tuple[str, ...]:
+        """The ``Sitemap:`` values robots.txt lists, as written; empty without rules."""
+        return self._rules.sitemaps if self._rules is not None else ()
+
     def decide(self, url: str, user_agent: str) -> RobotsDecision:
         """Decide whether ``user_agent`` may fetch ``url``.
 
         :param url: A URL on this policy's origin, in httpx's normalized form.
-        :param user_agent: The full user agent; its product token is matched.
+        :param user_agent: The full user agent, or a bare product token (or
+            ``*``); its product token is matched.
         :return: The decision.
         """
         rule = None

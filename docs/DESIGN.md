@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.5 (2026-11-02). Draft 2.5 records Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.6 (2026-11-02). Draft 2.6 records Session 5b: `peri.robots.directives`, `epi.robots.access` with a versioned AI crawler list, `epi.sitemap.listed`, `epi.links.resolve` with its limits, the `LIMIT_REACHED` reason code (ADR-001 amendment 2), the sitemap and DEV user URL sources, `copies` in the pair map, and `cernis pairs --from-dev-user`. Draft 2.5 recorded Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -75,6 +75,7 @@ Reason codes for `NOT_DETERMINABLE`:
 | `ADDRESS_REFUSED` | The URL's host resolves to a non-public address (an internal network, loopback, or a cloud metadata service), so Cernis refused to contact it. A link to an internal address is a question Cernis declines to answer, not a broken link. |
 | `REQUIRES_RENDERING` | The content only exists after JavaScript runs. The MVP has no headless browser. |
 | `AMBIGUOUS` | The evidence supports more than one reading (for example, two different canonical URLs). |
+| `LIMIT_REACHED` | Cernis did not fetch what would answer the question because a configured politeness limit stopped it (links per page, links per external host, sitemap documents). The finding says how many were left and which limit applied (ADR-001 amendment 2). |
 
 ### Actor
 
@@ -197,6 +198,7 @@ Checks against the fetched HTML of the article itself.
 | `peri.lang` | The `<html lang>` value, or its absence | The attribute is missing or empty (WCAG 2 success criterion 3.1.1, Language of Page, Level A) |
 | `peri.jsonld.parses` | Each JSON-LD block's `@type`, one finding per block | A block fails to parse as JSON |
 | `peri.title` | The `<title>` and its length | Never |
+| `peri.robots.directives` | Every robots `meta` tag (`robots`, `googlebot`, `googlebot-news`, `bingbot`, and each AI crawler token) and the response's `X-Robots-Tag` header, as written, or that there are none | Never: excluding a page from indexing may be the author's intent. On DEV the actor is `PLATFORM` |
 
 ### Epitext: around the page
 
@@ -207,9 +209,9 @@ Checks against things outside the article's HTML.
 | `epi.pair.canonical` | **The flagship check.** Given a declared original and copy: the URL comparison outcome for the copy's canonical against the original, and for the original's canonical against itself. Two findings, targets `copy` and `original`, both about the copy's URL and both `AUTHOR`. `EQUIVALENT` is a fact that names each normalization that mattered (or the redirect, with its receipt). An original with no canonical is a fact. If the original cannot be read whole, both findings are `NOT_DETERMINABLE` with the original's reason code; if only the copy cannot, the copy's finding is. A page whose canonicals disagree makes its side `AMBIGUOUS` | Either comparison is `DIFFERENT`, or the copy has no canonical at all |
 | `epi.canonical.resolves` | Each canonical URL's status and full redirect chain, fetched through the normal fetcher (robots.txt, the address screen, pacing, retries); one finding per distinct canonical, the URL is the `target`. A redirect is a fact that names the final URL | 404 or 410 (401 and 403 are `ACCESS_DENIED`; 429 is `RATE_LIMITED`; a failed fetch or 5xx is `FETCH_FAILED`) |
 | `epi.og.image.resolves` | The `og:image` URL's status and content type, fetched with the normal size limit. The image is never decoded or stored, and never cached; only the receipt is kept. On DEV, which generates the image, the actor is `PLATFORM` and a defect has no recommendation | 404 or 410, or a 2xx whose content type is not `image/*` (or is missing) |
-| `epi.robots.access` | What the site's robots.txt says about this URL for general crawlers and for each named AI crawler (one finding per crawler; the crawler is the `target`) | Never; whether to allow AI crawlers is the author's or platform's choice |
-| `epi.sitemap.listed` | Whether the URL appears in the site's sitemap (WordPress) | Absent from a sitemap that exists and lists other posts |
-| `epi.links.resolve` | Each body link's status, paced (the link is the `target`) | 404 or 410 only |
+| `epi.robots.access` | What the site's robots.txt says about this URL for `*` and for each AI crawler or product token in `src/cernis/data/ai_crawlers.toml` (one finding per name; the name is the `target`), from the robots.txt receipt already fetched for the page and Cernis's own RFC 9309 matcher. Each finding says whether a group names the crawler or the `*` group applies, and which rule decided. A 4xx robots.txt allows every crawler (a fact); a 5xx, 429, or failed robots.txt, or one never fetched because the address screen refused the host, is `NOT_DETERMINABLE`. The check version is `1+c<list version>+m<matcher version>`, so a change to the list or the matcher is a `CHECKER` change. Each list entry names its operator and the operator's page documenting the token; Bytespider is left out because no ByteDance documentation could be confirmed. Actor: `PLATFORM` on DEV, `AUTHOR` on WordPress and owned sites | Never; whether to allow AI crawlers is the author's or platform's choice |
+| `epi.sitemap.listed` | Whether the site's sitemap lists the URL, by the shared URL comparison (an equivalent `<loc>` names the normalization). Discovery: robots.txt `Sitemap:` lines, then `sitemap.xml`, then `wp-sitemap.xml`, first at the site's root (the `[[site]]` prefix covering the page) and then at the origin's. Indexes are followed, children on the index's own host only (at most 50 documents per site, configurable, two index levels, 50,000 entries per document and 200,000 per site); a `.xml.gz` body is decompressed, every member, within the body limit; expat refuses any `DOCTYPE` or entity declaration, in any encoding. A `<loc>` matches when it is equivalent to the page's URL, the URL it answered at, or a hop of its redirect chain. Read once per site per run. No sitemap found (404 or 410 everywhere searched) is a fact; a place that could not be read, a child the fetcher refuses, or a read stopped by a limit is `NOT_DETERMINABLE`; so is an omission when a Google News sitemap was read. A page expected to be absent (its canonical names another URL, or it declares `noindex`) is a fact. Skipped on DEV; an unread page gets one `NOT_DETERMINABLE` with its own reason | The sitemap was read completely, lists other pages in the same section (the page's `[[site]]` prefix, else its parent path), does not list this one, and the page is not expected to be absent |
+| `epi.links.resolve` | Each link in the extracted article body (never navigation or footers), deduplicated without fragments, fetched without storing its body: its status, and a redirect as a fact naming the final URL (the link is the `target`). `mailto:`, `tel:`, `javascript:`, other schemes, and fragment-only links are counted in one fact (`skipped links`). At most 100 links per page and 5 per external host per run, both configurable; the host budget is charged once per distinct URL and also for each external host a link redirects to; links over a limit get one `NOT_DETERMINABLE` finding per page (`unchecked links`, `LIMIT_REACHED`) naming how many and why. 401 and 403 are `ACCESS_DENIED`, 429 `RATE_LIMITED`, robots.txt `DISALLOWED_BY_ROBOTS`, a non-public address `ADDRESS_REFUSED`, a failure or 5xx `FETCH_FAILED`. With no article body (the generic extractor), or an unread page, the question is `NOT_DETERMINABLE` | 404 or 410 only |
 
 ### Explicitly out of scope for the MVP
 
@@ -307,7 +309,9 @@ Cernis is a deliberate real-world test of the SDK, its first consumer outside th
 
 ### Polite fetching
 
-- Only URLs the author lists, or that come from the author's own sitemap or DEV username
+- Only URLs the author lists, or that come from the author's own sitemap or DEV username, and the URLs those pages name: canonicals, `og:image`, sitemaps, and article-body links (Session 5b). Every one goes through the same fetcher (robots.txt, the address screen, pacing, retries, the deadline, the body limit) and is a receipt in the run.
+- `--allow-loopback` opens the address screen for every fetch in a run, including the links, canonicals, and sitemaps pages name, so it is refused together with `--from-sitemap` or `--from-dev-user`, and warns otherwise. `--from-sitemap` lists only pages on the sitemap's own host.
+- The DEV user source reads DEV's public articles API (`https://dev.to/api/articles?username=...`), page by page, at most 50 pages; a username must be letters, digits, and underscores. A failed page stops the listing with a note, so a short listing is never taken for a complete one.
 - User agent: `Cernis/<version> (+https://github.com/kenwalger/cernis)`
 - Cernis checks robots.txt for its own user agent before fetching, and records a `DISALLOWED_BY_ROBOTS` finding instead of fetching when disallowed. Matching uses Cernis's own RFC 9309 matcher, with its own version, not `urllib.robotparser`, whose behavior differs between Python versions. Rules are matched against the URL exactly as it will be sent, after normalization.
 - A robots.txt that returns 4xx allows everything, per RFC 9309, **except 429**, which Cernis treats like a server error: disallow everything for now, and record it. This deliberately departs from the RFC, in favor of politeness (an ADR records why).
@@ -328,10 +332,14 @@ Cernis reads public pages of the author's own articles. It never touches comment
 
 ```text
 cernis audit <url> [<url> ...] [--site-type dev|wordpress|owned] [--map <file>] [--format md|json]
-cernis audit --from-sitemap <sitemap-url>
-cernis audit --from-dev-user <username>
+cernis audit --from-sitemap <sitemap-url> [--include-prefix <prefix>] [--limit N] [--list-only]
+cernis audit --from-dev-user <username> [--limit N] [--list-only]
 cernis pair --original <url> --copy <url> [--original-site TYPE] [--copy-site TYPE] [--map <file>]
 cernis pairs --map <file>            every [[pair]] in a pair map (docs/PAIR-MAP.md)
+cernis pairs --from-dev-user <username> [--map <file>] [--limit N] [--list-only]
+                                     each DEV article whose canonical_url is off dev.to
+  every auditing command also takes --max-links-per-page N, --max-links-per-host N,
+  and --max-sitemap-documents N
 cernis history <url>
 cernis diff <url> [--from <run-id>] [--to <run-id>]
 cernis checks                        list every check with its id, version, and family
@@ -416,7 +424,7 @@ Each phase is one or more numbered Claude Code sessions, with the usual CLAUDE.m
 | 1.5 | CI on Python 3.12 to 3.14, and Trusted Publishing to PyPI | CI green on a pull request; `docs/RELEASING.md` written |
 | 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Done in Session 3. Session 3b adds the SSRF guard, the RFC 9309 matcher, and the overall request deadline. |
 | 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | `cernis audit <url>` produces a report from fixtures and from one real article |
-| 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | `cernis pairs --map` runs over all cross-posted articles. Session 5a adds the pair check, canonical and og:image resolution, `owned`, `cernis pair`, and `cernis pairs`. |
+| 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | `cernis pairs --map` runs over all cross-posted articles. Session 5a adds the pair check, canonical and og:image resolution, `owned`, `cernis pair`, and `cernis pairs`. Session 5b adds robots access and directives, sitemaps, links, the sitemap and DEV user sources, `copies`, and `cernis pairs --from-dev-user`. |
 | 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass |
 | 6 | Fix the *proposed* numbers, run the first full audit, review every defect, evaluate C-1 to C-5 | An evaluation note, and material for an article |
 

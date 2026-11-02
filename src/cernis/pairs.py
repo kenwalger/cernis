@@ -5,8 +5,9 @@ URL, may declare its site type, and that may give site types to whole parts
 of a site by URL prefix (``[[site]]``). A site type chooses the article-body
 extractor (DESIGN.md section 3): a URL's own declaration wins, then the
 longest matching prefix, then host detection. ``cernis audit --map`` reads
-it for site types; Phase 4's ``cernis pairs --map`` will run the pair check
-over it.
+it for site types, and ``cernis pairs --map`` runs the pair check over it.
+A ``[[pair]]`` names one original and either one ``copy`` or several
+``copies`` (Session 5b); several copies load as one :class:`Pair` each.
 
 Loading is strict, so a typo fails loudly instead of being ignored: unknown
 keys, a missing URL, a URL that is not absolute http(s), an unknown site
@@ -49,6 +50,8 @@ class Pair:
 
     :param original: The original article.
     :param copy: The copy, which should name the original as its canonical.
+        A map entry with ``copies`` gives one pair per copy, sharing the
+        original.
     """
 
     original: SiteUrl
@@ -159,6 +162,28 @@ def _site_prefixes(entries: object) -> tuple[SitePrefix, ...]:
     return tuple(rules)
 
 
+def _copies(entry: dict[str, object], number: int) -> list[tuple[str, SiteUrl]]:
+    """Read a pair's ``copy`` table or ``copies`` array, exactly one of them.
+
+    :param entry: The ``[[pair]]`` table.
+    :param number: The pair's number, for messages.
+    :return: Each copy with where it is (``copy``, or ``copy 2``), in order.
+    :raises PairMapError: If neither or both are given, or ``copies`` is
+        not a non-empty array of tables.
+    """
+    if ("copy" in entry) == ("copies" in entry):
+        raise PairMapError(f"pair {number}: give exactly one of copy or copies")
+    if "copy" in entry:
+        return [("copy", _site_url(entry["copy"], f"pair {number}, copy"))]
+    copies = entry["copies"]
+    if not isinstance(copies, list) or not copies:
+        raise PairMapError(f"pair {number}: copies must be a non-empty array of tables")
+    return [
+        (f"copy {index}", _site_url(item, f"pair {number}, copy {index}"))
+        for index, item in enumerate(copies, start=1)
+    ]
+
+
 def parse_pair_map(text: str) -> PairMap:
     """Read a pair map from TOML text.
 
@@ -186,14 +211,19 @@ def parse_pair_map(text: str) -> PairMap:
     for number, entry in enumerate(entries, start=1):
         if not isinstance(entry, dict):
             raise PairMapError(f"pair {number}: must be a table")
-        unknown = sorted(set(entry) - {"original", "copy"})
+        unknown = sorted(set(entry) - {"original", "copy", "copies"})
         if unknown:
             raise PairMapError(f"pair {number}: unknown key {', '.join(unknown)}")
         original = _site_url(entry.get("original"), f"pair {number}, original")
-        copy = _site_url(entry.get("copy"), f"pair {number}, copy")
-        if normalize_url(original.url) == normalize_url(copy.url):
-            raise PairMapError(f"pair {number}: the copy is the same URL as the original")
-        for role, item in (("original", original), ("copy", copy)):
+        copies = _copies(entry, number)
+        seen_copies: set[str] = set()
+        for role, copy in copies:
+            if normalize_url(original.url) == normalize_url(copy.url):
+                raise PairMapError(f"pair {number}: the {role} is the same URL as the original")
+            if normalize_url(copy.url) in seen_copies:
+                raise PairMapError(f"pair {number}: {copy.url} is listed as a copy twice")
+            seen_copies.add(normalize_url(copy.url))
+        for role, item in (("original", original), *copies):
             if item.site is None:
                 continue
             key = normalize_url(item.url)
@@ -204,7 +234,7 @@ def parse_pair_map(text: str) -> PairMap:
                     f"but as {first_site} in {first_where}"
                 )
             declared.setdefault(key, (item.site, f"pair {number}, {role}"))
-        pairs.append(Pair(original=original, copy=copy))
+        pairs.extend(Pair(original=original, copy=copy) for _, copy in copies)
     return PairMap(pairs=tuple(pairs), sites=sites)
 
 

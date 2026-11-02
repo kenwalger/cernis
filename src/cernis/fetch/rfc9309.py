@@ -9,8 +9,9 @@ What it implements:
 
 - **Lines** end in LF, CR, or CRLF. ``#`` starts a comment. Records are
   ``key: value``, keys case-insensitive. Only ``user-agent``, ``allow``, and
-  ``disallow`` are read; others (``sitemap``, ``crawl-delay``) and lines
-  without a colon are ignored.
+  ``disallow`` are matched; ``sitemap`` values are collected, outside any
+  group, for sitemap discovery (they never affect matching); others
+  (``crawl-delay``) and lines without a colon are ignored.
 - **Groups** (section 2.2.1): one or more ``user-agent`` lines, then rules.
   A ``user-agent`` line after a rule starts a new group. Rules before any
   ``user-agent`` belong to no group. The product token is the leading run
@@ -165,10 +166,21 @@ class RobotsRules:
     """A parsed robots.txt.
 
     :param groups: The groups, in file order.
+    :param sitemaps: Every ``Sitemap:`` value, in file order, as written.
     """
 
-    def __init__(self, groups: tuple[_Group, ...]) -> None:
+    def __init__(self, groups: tuple[_Group, ...], sitemaps: tuple[str, ...] = ()) -> None:
         self._groups = groups
+        self.sitemaps = sitemaps
+
+    def names(self, product_token: str) -> bool:
+        """Tell whether a group names a crawler, so its rules apply instead of ``*``'s.
+
+        :param product_token: The crawler's product token, or ``*``.
+        :return: Whether any group lists it (compared ignoring case).
+        """
+        token = product_token.lower()
+        return any(token in group.tokens for group in self._groups)
 
     @classmethod
     def parse(cls, text: str) -> "RobotsRules":
@@ -178,6 +190,7 @@ class RobotsRules:
         :return: The rules.
         """
         groups: list[_Group] = []
+        sitemaps: list[str] = []
         tokens: list[str] = []
         rules: list[_Rule] = []
         in_agents = False
@@ -188,6 +201,12 @@ class RobotsRules:
                 continue
             key = key.strip().lower()
             value = value.strip()
+            if key == "sitemap":
+                # The comment split above is safe: a URL's "#" is a fragment,
+                # which a sitemap URL never needs.
+                if value:
+                    sitemaps.append(value)
+                continue
             if key == "user-agent":
                 if not in_agents:
                     if tokens:
@@ -208,7 +227,7 @@ class RobotsRules:
                     rules.append(parsed)
         if tokens:
             groups.append(_Group(tokens=tuple(tokens), rules=tuple(rules)))
-        return cls(tuple(groups))
+        return cls(tuple(groups), tuple(sitemaps))
 
     def check(self, product_token: str, path: str) -> Verdict:
         """Decide whether a crawler may fetch a path.

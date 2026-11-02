@@ -42,3 +42,13 @@ DESIGN.md draft 2 makes the third status say how Cernis came to not know.
 Every finding also gains a derived `key`, stable across runs: the SHA-256 of the check id, the normalized subject URL, and the `target`, leaving out the check version. It is computed at construction and cannot be passed in.
 
 Consequence: "what cannot be determined" becomes checkable. A reader can tell an unanswered question Cernis tried to answer from one it could never answer, and see what would answer the second kind.
+
+## Amendment 2 (2026-11-02, session 5b): LIMIT_REACHED
+
+Session 5b checks the links in an article body and reads sitemaps, both bounded by politeness limits (links per page, links per external host per run, sitemap documents per site). Something Cernis chose not to fetch because a limit was reached is not a failed fetch, and must not be skipped silently (DESIGN.md principle 5).
+
+- A new reason code, `LIMIT_REACHED`, covers a question Cernis did not answer because a configured limit stopped it from fetching what would answer it.
+- It is an attempt-based code: the finding carries evidence of what Cernis did read (the page's receipt and the links it found, or the sitemap documents it read), and no `would_require`.
+- The finding says how many things were left unchecked and which limit stopped them, so raising the limit is the author's informed choice.
+
+Every report format writes reason codes by value, so `LIMIT_REACHED` needs no format change; the JSON report's format version stays 1.

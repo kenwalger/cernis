@@ -10,6 +10,9 @@ The report is one JSON object:
 - ``subjects``: the audited URLs;
 - ``pairs``: each declared ``original`` and ``copy`` audited together
   (added in Session 5a; adding a field does not change the version);
+- ``sources``: where the URLs came from when a sitemap or a DEV user listed
+  them: ``kind``, ``query``, ``receipt_ids``, ``listed``, and ``notes``
+  (each ``url`` and ``note``), such as articles not cross-posted (Session 5b);
 - ``counts``: the number of findings in each report section
   (``observed``, ``recommendations``, ``not_determinable``), and nothing
   else (principle 2: no scores or summary numbers);
@@ -157,6 +160,16 @@ def report_json(run: Run) -> str:
         "checks": [{"id": cid, "version": version} for cid, version in checks_in(run)],
         "subjects": list(run.subjects),
         "pairs": [{"original": pair.original, "copy": pair.copy} for pair in run.pairs],
+        "sources": [
+            {
+                "kind": source.kind,
+                "query": source.query,
+                "receipt_ids": list(source.receipt_ids),
+                "listed": list(source.listed),
+                "notes": [{"url": note.url, "note": note.note} for note in source.notes],
+            }
+            for source in run.sources
+        ],
         "counts": section_counts(run),
         "findings": [finding_as_dict(finding) for finding in run.findings],
         "receipts": [receipt_as_dict(receipt) for receipt in run.receipts],

@@ -15,6 +15,7 @@ DESIGN_CHECK_IDS = {
     "peri.lang",
     "peri.jsonld.parses",
     "peri.title",
+    "peri.robots.directives",
     "epi.pair.canonical",
     "epi.canonical.resolves",
     "epi.og.image.resolves",
@@ -24,7 +25,14 @@ DESIGN_CHECK_IDS = {
 }
 
 PREFIXES = {Family.PERITEXT: "peri.", Family.EPITEXT: "epi."}
-EPITEXT_IMPLEMENTED = {"epi.pair.canonical", "epi.canonical.resolves", "epi.og.image.resolves"}
+EPITEXT_IMPLEMENTED = {
+    "epi.pair.canonical",
+    "epi.canonical.resolves",
+    "epi.og.image.resolves",
+    "epi.robots.access",
+    "epi.sitemap.listed",
+    "epi.links.resolve",
+}
 
 
 def test_check_ids_are_unique() -> None:
@@ -44,8 +52,8 @@ def test_registry_lists_every_check_in_the_design() -> None:
     assert {check.id for check in CHECKS} == DESIGN_CHECK_IDS
 
 
-def test_peritext_checks_are_implemented_and_epitext_checks_are_not_yet() -> None:
-    """The nine peritext checks (Session 4b) and three epitext checks (Session 5a) run.
+def test_every_check_is_implemented() -> None:
+    """The ten peritext checks (Sessions 4b and 5b) and six epitext checks (5a and 5b) run.
 
     Session 4d bumped peri.lang and peri.og.core to version 2, and Session 5a
     peri.og.url_matches_canonical; every other check is still at version 1.

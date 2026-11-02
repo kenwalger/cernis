@@ -568,6 +568,34 @@ for _name in ("volatile-a", "volatile-b"):
     )
 
 
+NO_ROBOTS = (
+    "peri.robots.directives",
+    "",
+    OBS,
+    False,
+    "The page declares no robots directives: no robots meta tag and no X-Robots-Tag header.",
+)
+"""The peri.robots.directives row for a fixture with none (Session 5b); the actor goes fourth."""
+
+for _name, (_url, _site, _rows, _advice) in EXPECTED.items():
+    if _name == "wordpress-entry":
+        _rows.append(
+            (
+                "peri.robots.directives",
+                "",
+                OBS,
+                False,
+                A,
+                "The page declares robots directives: robots meta tag "
+                "'index, follow, max-image-preview:large'.",
+            )
+        )
+        continue
+    # The row's actor is the page's peri.title actor: the platform's on DEV.
+    _actor = next(row[4] for row in _rows if row[0] == "peri.title")
+    _rows.append((*NO_ROBOTS[:4], _actor, NO_ROBOTS[4]))
+
+
 def run_checks(name: str) -> tuple[list[Finding], list[Finding]]:
     """Run the peritext checks and recommendations over one fixture.
 

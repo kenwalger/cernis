@@ -312,6 +312,7 @@ def test_reason_codes_match_design() -> None:
         "ADDRESS_REFUSED",
         "REQUIRES_RENDERING",
         "AMBIGUOUS",
+        "LIMIT_REACHED",
     }
 
 

@@ -46,7 +46,7 @@ def _epi(id: str, description: str, implemented: bool = False) -> CheckSpec:
 
     :param id: The check id.
     :param description: The one-line description.
-    :param implemented: Whether it can run yet (Session 5a implements three).
+    :param implemented: Whether it can run yet (Sessions 5a and 5b implement them).
     :return: The check spec.
     """
     return CheckSpec(
@@ -72,6 +72,10 @@ CHECKS: tuple[CheckSpec, ...] = (
     _peri("peri.lang", "The <html> element sets a lang attribute.", version="2"),
     _peri("peri.jsonld.parses", "JSON-LD blocks parse as JSON; their @type is reported."),
     _peri("peri.title", "The <title> and its length are reported."),
+    _peri(
+        "peri.robots.directives",
+        "Robots meta tags and the X-Robots-Tag header, reported as facts.",
+    ),
     _epi(
         "epi.pair.canonical",
         "A copy's canonical points at its original; the original's, at itself.",
@@ -87,9 +91,21 @@ CHECKS: tuple[CheckSpec, ...] = (
         "The og:image URL's status and content type; a defect for 404, 410, or not an image.",
         implemented=True,
     ),
-    _epi("epi.robots.access", "What robots.txt allows for this URL, for general and AI crawlers."),
-    _epi("epi.sitemap.listed", "The URL appears in the site's sitemap."),
-    _epi("epi.links.resolve", "Links in the article body resolve."),
+    _epi(
+        "epi.robots.access",
+        "What robots.txt says for this URL, for * and each AI crawler; never a defect.",
+        implemented=True,
+    ),
+    _epi(
+        "epi.sitemap.listed",
+        "Whether the site's sitemap lists the URL; a defect only if it lists others nearby.",
+        implemented=True,
+    ),
+    _epi(
+        "epi.links.resolve",
+        "Each article-body link's status; a defect only for 404 or 410.",
+        implemented=True,
+    ),
 )
 """Every registered check, peritext first, in DESIGN.md order."""
 

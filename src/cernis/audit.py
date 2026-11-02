@@ -9,9 +9,14 @@ three steps:
    recommendation for each defect the author can act on. If not, each
    question the checks would have answered is ``NOT_DETERMINABLE``, with the
    reason and the receipts, and no check runs.
-2. **Around each page read whole.** Each canonical URL is fetched for
-   ``epi.canonical.resolves``, and the ``og:image`` for
-   ``epi.og.image.resolves`` (without storing the image).
+2. **Around each page.** For a page read whole, each canonical URL is
+   fetched for ``epi.canonical.resolves``, the ``og:image`` for
+   ``epi.og.image.resolves`` (without storing the image), the site's
+   sitemap for ``epi.sitemap.listed`` (not on DEV; once per site per run),
+   and each article-body link for ``epi.links.resolve`` (without storing
+   bodies, within :class:`AuditLimits`). For every page whose robots.txt
+   Cernis fetched, read whole or not, ``epi.robots.access`` reads that same
+   robots.txt for ``*`` and each AI crawler.
 3. **Pairs.** ``epi.pair.canonical`` compares each copy's canonical with
    its original, and the original's with itself.
 
@@ -27,12 +32,15 @@ a bug in Cernis, so the error propagates; it is never caught and emitted.
 
 import itertools
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
 
 from cernis import __version__
+from cernis.checks import links as links_check
+from cernis.checks import robots_access as robots_check
+from cernis.checks import sitemap_listed as sitemap_check
 from cernis.checks.epitext import (
     FetchedPage,
     canonical_resolves,
@@ -41,19 +49,55 @@ from cernis.checks.epitext import (
     og_image_url,
     pair_canonical,
 )
-from cernis.checks.outcomes import Readable, classify, not_determinable_findings
+from cernis.checks.links import HostBudget, LinkLimits, links_resolve
+from cernis.checks.outcomes import Readable, Unreadable, classify, not_determinable_findings
 from cernis.checks.peritext import peritext_findings
 from cernis.checks.recommend import (
     pair_recommendations,
     recommendations_for,
     resource_recommendations,
 )
-from cernis.fetch import Fetcher, FetchError, FetchResult
-from cernis.model import ErrorKind, Finding, Receipt, Run, RunPair, Snapshot
+from cernis.checks.robots_access import robots_access
+from cernis.checks.sitemap_listed import sitemap_listed
+from cernis.fetch import Fetcher, FetchError, FetchResult, RobotsPolicy
+from cernis.fetch.robots import robots_url_for
+from cernis.model import ErrorKind, Finding, Receipt, Run, RunPair, RunSource, Snapshot
 from cernis.parse import SitePrefix, SiteType, build_snapshot, effective_site, parse_page
-from cernis.urls import normalize_url
+from cernis.parse.extractors import longest_prefix, read_article
+from cernis.parse.html import ParsedPage, parse_tree
+from cernis.sitemaps import SitemapRead, discover_sitemaps
+from cernis.urls import UrlMatch, compare_urls, normalize_url
 
-__all__ = ["PairTarget", "RunFetches", "Target", "audit", "peritext_findings", "run_id_for"]
+__all__ = [
+    "AuditLimits",
+    "PairTarget",
+    "RunFetches",
+    "Target",
+    "audit",
+    "peritext_findings",
+    "run_id_for",
+]
+
+
+@dataclass(frozen=True, kw_only=True)
+class AuditLimits:
+    """How much a run fetches around each page. Every limit is configurable.
+
+    :param links: The link limits (per page, and per external host per run).
+    :param sitemap_documents: The most sitemap documents read per site.
+    :raises ValueError: If ``sitemap_documents`` is less than 1.
+    """
+
+    links: LinkLimits = field(default_factory=LinkLimits)
+    sitemap_documents: int = 50
+
+    def __post_init__(self) -> None:
+        """Check the limits.
+
+        :raises ValueError: If ``sitemap_documents`` is less than 1.
+        """
+        if self.sitemap_documents < 1:
+            raise ValueError("AuditLimits: sitemap_documents must be at least 1")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -107,6 +151,35 @@ class RunFetches:
         self._by_url: dict[str, FetchResult] = {}
         self.receipts: dict[str, Receipt] = {}
 
+    @property
+    def fetcher(self) -> Fetcher:
+        """The run's fetcher."""
+        return self._fetcher
+
+    def known(self, url: str) -> bool:
+        """Tell whether the run already fetched a URL, so fetching it again costs nothing.
+
+        :param url: The URL.
+        :return: Whether a fetch of it is on record.
+        """
+        try:
+            return str(httpx.URL(url)) in self._by_url
+        except httpx.InvalidURL:
+            return False
+
+    def robots_policy(self, url: str) -> RobotsPolicy:
+        """Return the robots.txt policy for a URL's origin, keeping its receipts.
+
+        A ``FetchError`` for a URL that cannot be fetched at all propagates.
+
+        :param url: The URL.
+        :return: The policy (fetched once per origin per run).
+        """
+        policy, receipts = self._fetcher.robots_policy(url)
+        for receipt in receipts:
+            self.receipts.setdefault(receipt.id, receipt)
+        return policy
+
     def fetch(self, url: str, *, store_body: bool = True) -> FetchResult:
         """Fetch a URL, or return the run's earlier fetch of it.
 
@@ -153,6 +226,9 @@ def audit(
     now: Callable[[], datetime],
     prefixes: Sequence[SitePrefix] = (),
     pairs: Sequence[PairTarget] = (),
+    limits: AuditLimits | None = None,
+    fetches: RunFetches | None = None,
+    sources: Sequence[RunSource] = (),
 ) -> Run:
     """Audit pages and pairs, and return the validated run.
 
@@ -167,6 +243,12 @@ def audit(
         against the URL that answered, after redirects.
     :param pairs: Original and copy pairs; both pages are audited, then the
         pair check runs.
+    :param limits: The limits on fetches around each page; the defaults if
+        ``None``.
+    :param fetches: The run's fetches, when a URL source already made
+        requests with ``fetcher`` (their receipts join the run); a new one if
+        ``None``.
+    :param sources: Where the URLs came from, recorded in the run.
     :return: The run.
     :raises ValueError: If there is nothing to audit. A
         :class:`~cernis.fetch.FetchError` for a page URL that cannot be
@@ -181,7 +263,9 @@ def audit(
     def new_id() -> str:
         return f"f-{next(counter):03d}"
 
-    fetches = RunFetches(fetcher)
+    fetches = fetches or RunFetches(fetcher)
+    limits = limits or AuditLimits()
+    around = _Around(fetches=fetches, limits=limits, prefixes=prefixes)
     snapshots: list[Snapshot] = []
     findings: list[Finding] = []
     pages: dict[str, FetchedPage] = {}
@@ -194,7 +278,7 @@ def audit(
         pages[key] = _audit_page(target, fetches, prefixes, snapshots, findings, new_id)
 
     for page in pages.values():
-        findings.extend(_around_page(page, fetches, new_id))
+        findings.extend(around.page(page, new_id))
 
     run_pairs: list[RunPair] = []
     for pair in pairs:
@@ -230,6 +314,7 @@ def audit(
         snapshots=tuple(snapshots),
         findings=tuple(findings),
         pairs=tuple(run_pairs),
+        sources=tuple(sources),
     )
 
 
@@ -261,6 +346,8 @@ def _audit_page(
     page_url = outcome.receipt.final_url or subject
     site = effective_site(page_url, target.site, prefixes)
     page = parse_page(outcome.receipt, outcome.body)
+    tree, _ = parse_tree(outcome.body, outcome.receipt.header("content-type"))
+    article = read_article(tree, page_url, target.site, prefixes)
     snapshots.append(
         build_snapshot(outcome.receipt, outcome.body, site=target.site, prefixes=prefixes)
     )
@@ -271,7 +358,158 @@ def _audit_page(
     findings.extend(
         recommendations_for(observed, page=page, receipt=outcome.receipt, new_id=new_id)
     )
-    return FetchedPage(subject=subject, site=site, result=result, outcome=outcome, page=page)
+    return FetchedPage(
+        subject=subject, site=site, result=result, outcome=outcome, page=page, article=article
+    )
+
+
+class _Around:
+    """The checks around each page, with what they share across the run.
+
+    :param fetches: The run's fetches.
+    :param limits: The limits.
+    :param prefixes: Prefix rules, for a page's sitemap section.
+    """
+
+    def __init__(
+        self, *, fetches: RunFetches, limits: AuditLimits, prefixes: Sequence[SitePrefix]
+    ) -> None:
+        self.fetches = fetches
+        self.limits = limits
+        self.prefixes = prefixes
+        self.budget = HostBudget()
+        self.sitemaps: dict[str, SitemapRead] = {}
+
+    def page(self, page: FetchedPage, new_id: Callable[[], str]) -> list[Finding]:
+        """Run every check around one page.
+
+        :param page: The page.
+        :param new_id: The run's finding id source.
+        :return: The findings, in check order, with their recommendations.
+        """
+        found = _around_page(page, self.fetches, new_id)
+        found += self._robots(page, new_id)
+        if isinstance(page.outcome, Unreadable):
+            # Every question around an unread page is open, with the page's reason.
+            reason = page.outcome
+            if page.site is not SiteType.DEV:
+                found.append(
+                    sitemap_check.not_read(
+                        subject=page.subject, site=page.site, reason=reason, new_id=new_id
+                    )
+                )
+            found.append(links_check.not_read(page, reason, new_id=new_id))
+            return found
+        if page.site is not SiteType.DEV:
+            found += self._sitemap(page, new_id)
+        if page.article is not None:
+            links = links_resolve(
+                page,
+                page.article,
+                lambda url: self.fetches.fetch(url, store_body=False),
+                limits=self.limits.links,
+                budget=self.budget,
+                new_id=new_id,
+                known=self.fetches.known,
+            )
+            found += links + resource_recommendations(links, new_id=new_id)
+        return found
+
+    def _robots(self, page: FetchedPage, new_id: Callable[[], str]) -> list[Finding]:
+        """Run ``epi.robots.access`` if Cernis fetched the page's robots.txt.
+
+        :param page: The page.
+        :param new_id: The run's finding id source.
+        :return: The findings; for a page whose robots.txt was never fetched
+            (the address screen refused the host first), one NOT_DETERMINABLE
+            finding per name with the page's reason.
+        """
+        url = page.base
+        robots_url = robots_url_for(str(httpx.URL(url)))
+        if not any(decision.robots_url == robots_url for decision in page.result.robots):
+            assert isinstance(page.outcome, Unreadable)
+            return robots_check.not_read(
+                subject=page.subject, site=page.site, reason=page.outcome, new_id=new_id
+            )
+        policy = self.fetches.robots_policy(url)
+        return robots_access(
+            subject=page.subject, url=url, site=page.site, policy=policy, new_id=new_id
+        )
+
+    def _sitemap(self, page: FetchedPage, new_id: Callable[[], str]) -> list[Finding]:
+        """Run ``epi.sitemap.listed``, reading each site's sitemaps once per run.
+
+        A site is the ``[[site]]`` prefix covering the page, else its origin.
+
+        :param page: The page, read whole.
+        :param new_id: The run's finding id source.
+        :return: The finding and any recommendation.
+        """
+        assert isinstance(page.outcome, Readable)
+        url = page.base
+        site_root = longest_prefix(url, self.prefixes)
+        key = site_root or robots_url_for(url)
+        read = self.sitemaps.get(key)
+        if read is None:
+            policy = self.fetches.robots_policy(url)
+            read = discover_sitemaps(
+                self.fetches.fetch,
+                url,
+                policy.sitemaps,
+                policy.receipt_id,
+                limit=self.fetches.fetcher.config.max_body_bytes,
+                max_documents=self.limits.sitemap_documents,
+                site_root=site_root,
+            )
+            self.sitemaps[key] = read
+        return sitemap_listed(
+            subject=page.subject,
+            page_receipt=page.outcome.receipt,
+            site=page.site,
+            read=read,
+            prefixes=self.prefixes,
+            new_id=new_id,
+            expected_absent=_expected_absent(page),
+        )
+
+
+def _expected_absent(page: FetchedPage) -> str | None:
+    """Say why a page is expected to be left out of a sitemap, if it is.
+
+    :param page: The page, read whole.
+    :return: The reason (its one canonical names a different URL, or it
+        declares ``noindex``), or ``None``.
+    """
+    assert page.page is not None
+    assert isinstance(page.outcome, Readable)
+    canonicals = canonical_urls(page)
+    if len(canonicals) == 1:
+        match = compare_urls(canonicals[0], page.base, redirects=(page.outcome.receipt,))
+        if match.outcome is UrlMatch.DIFFERENT:
+            return f"its canonical URL names another page ({canonicals[0]})"
+    if _noindex(page.page, page.outcome.receipt):
+        return "it declares noindex"
+    return None
+
+
+def _noindex(parsed: ParsedPage, receipt: Receipt) -> bool:
+    """Tell whether a page declares ``noindex`` (or ``none``) for crawlers in general.
+
+    :param parsed: The parsed page.
+    :param receipt: Its receipt, for the ``X-Robots-Tag`` header.
+    :return: Whether a ``robots`` meta tag or the header says so.
+    """
+    values = [
+        tag.content or ""
+        for tag in parsed.meta
+        if tag.attribute == "name" and tag.key.strip().lower() == "robots"
+    ]
+    values.append(receipt.header("x-robots-tag") or "")
+    for value in values:
+        for token in value.lower().split(","):
+            if token.strip() in ("noindex", "none"):
+                return True
+    return False
 
 
 def _around_page(

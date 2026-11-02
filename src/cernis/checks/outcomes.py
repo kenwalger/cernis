@@ -50,6 +50,7 @@ QUESTIONS: tuple[tuple[str, str, str], ...] = (
     ("peri.lang", "", "Whether the page declares its language"),
     ("peri.jsonld.parses", "", "Whether the page's JSON-LD blocks parse"),
     ("peri.title", "", "What the page's title is, and how long it is"),
+    ("peri.robots.directives", "", "Which robots directives the page declares"),
 )
 """Each peritext question, as ``(check id, target, question)``, in DESIGN.md order."""
 

@@ -18,6 +18,14 @@ copy = { url = "https://dev.to/kenwalger/a-word-list-tied-the-model-1a2b", site 
 original = { url = "https://www.kenwalger.com/blog/writing/views-measure-views-nine-years-writing" }
 copy = { url = "https://dev.to/kenwalger/views-measure-views-4co7" }
 
+# One original, several copies (Session 5b).
+[[pair]]
+original = { url = "https://www.kenwalger.com/blog/ai/do-you-actually-need-an-llm/" }
+copies = [
+  { url = "https://dev.to/kenwalger/do-you-actually-need-an-llm-3n55" },
+  { url = "https://coderlegion.com/1234/do-you-actually-need-an-llm" },
+]
+
 # Everything under the blog is WordPress, so its URLs need no site of their own.
 [[site]]
 prefix = "https://www.kenwalger.com/blog/"
@@ -27,9 +35,10 @@ type = "wordpress"
 | Key | Required | Meaning |
 | --- | --- | --- |
 | `format` | yes | The format version. Must be `1`. |
-| `[[pair]]` | see below | One original and its copy. |
-| `original.url`, `copy.url` | yes | An absolute `http` or `https` URL. |
-| `original.site`, `copy.site` | no | The URL's site type: `dev`, `wordpress`, or `owned`. |
+| `[[pair]]` | see below | One original and its copy, or its copies. |
+| `copy` or `copies` | exactly one, in a `[[pair]]` | One copy table, or a non-empty array of them. Each copy is audited as its own pair with the original. |
+| `original.url`, each copy's `url` | yes | An absolute `http` or `https` URL. |
+| `original.site`, each copy's `site` | no | The URL's site type: `dev`, `wordpress`, or `owned`. |
 | `[[site]]` | no | A prefix rule: every URL under `prefix` has site type `type`. |
 | `site.prefix` | yes, in a `[[site]]` | An absolute `http` or `https` URL with no query or fragment. |
 | `site.type` | yes, in a `[[site]]` | `dev`, `wordpress`, or `owned`. |
@@ -68,9 +77,12 @@ So a URL on `dev.to` declared `wordpress` uses `wordpress.entry`, and a URL unde
 ```
 cernis pair --original <url> --copy <url> [--original-site TYPE] [--copy-site TYPE] [--map FILE]
 cernis pairs --map FILE
+cernis pairs --from-dev-user USERNAME [--map FILE] [--limit N] [--list-only]
 ```
 
-Both take `--format md|json`, `--output FILE`, and `--cache-dir DIR`, as `cernis audit` does. `cernis pair` audits one pair; with `--map`, the map's site types and prefix rules apply, and `--original-site` and `--copy-site` override them. `cernis pairs` audits every `[[pair]]` in the map in one run, and refuses a map with none.
+All take `--format md|json`, `--output FILE`, `--cache-dir DIR`, and the limits `--max-links-per-page`, `--max-links-per-host`, and `--max-sitemap-documents`, as `cernis audit` does. `cernis pair` audits one pair; with `--map`, the map's site types and prefix rules apply, and `--original-site` and `--copy-site` override them. `cernis pairs` audits every `[[pair]]` in the map in one run, and refuses a map with none.
+
+`cernis pairs --from-dev-user USERNAME` builds the pairs instead: it reads the user's published articles from DEV's public API, and each article whose `canonical_url` names a page off dev.to becomes a pair, the canonical URL as the original and the DEV article as the copy. Articles with no canonical URL, or one on DEV, are listed in the report's source notes as not cross-posted. A `--map` given with it supplies site types and `[[site]]` prefix rules only; its pairs are not used. `--limit N` reads at most N articles, and `--list-only` prints the pairs it would audit, with a receipt for each request, and stops.
 
 A pair run audits both pages (every peritext check), checks each page's canonical URL and og:image (`epi.canonical.resolves`, `epi.og.image.resolves`), and then runs `epi.pair.canonical`: the copy's canonical against the original's URL, and the original's canonical against its own. Each distinct URL is fetched once per run, so an original shared by two pairs, or a canonical that is the page itself, costs one request. The report presents each pair as one subject with both pages: the original, the copy, and the pair check.
 
@@ -83,7 +95,8 @@ Loading fails, naming the pair and the key, when:
 - a key is not one of those above (a typo such as `orginal` or `sites` is an error, not ignored);
 - a `url` is missing, or is not an absolute `http` or `https` URL;
 - a `site` is not `dev`, `wordpress`, or `owned`;
-- a pair's copy is the same URL as its original (compared after URL normalization);
+- a pair has neither `copy` nor `copies`, or both, or an empty `copies`;
+- a pair's copy is the same URL as its original, or one copy is listed twice (compared after URL normalization);
 - one URL is declared with two different site types in different pairs (again compared after normalization). Declaring it the same way twice, or once with a site and once without, is fine;
 - a `[[site]]` has an unknown key, a missing or non-absolute `prefix`, a prefix with a query or fragment, or a `type` other than `dev`, `wordpress`, or `owned`;
 - one prefix (after normalization) is given two different types. Giving it the same type twice is fine.
