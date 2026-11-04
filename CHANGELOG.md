@@ -139,7 +139,7 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 - robots.txt matching moved from `urllib.robotparser`, whose answers differ
   between Python versions, to Cernis's own RFC 9309 matcher.
 - The version is read from the package metadata.
-- DESIGN.md went from draft 2 to draft 2.9; claims C-1 and C-3 have results
+- DESIGN.md went from draft 2 to draft 2.10; claims C-1 and C-3 have results
   (section 8), and C-1b is proposed.
 - robots.txt reading is version 2 (`epi.robots.access` 1+c1+m2): only the
   first 500 KiB are parsed, a cut-off body keeps lines ended by CR, and a
@@ -151,6 +151,11 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 - `store_body=False` no longer keeps the resource's robots.txt out of the
   cache.
 - A trailing dot in a host no longer escapes pacing.
+- A whole fetch has a time budget (`FetchConfig.fetch_timeout`, 120 s by
+  default): every attempt, retry wait, and redirect of the requested URL.
+  robots.txt has its own budget and is never charged to the page's.
+- The bare `cernis` command describes what Cernis does and points to
+  `cernis --help`, instead of saying nothing is usable yet.
 
 ### Security
 

@@ -33,7 +33,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Network-safety fixes (session 5e, 2026-11-02).** 24 of the 28 real findings from the tier comparison (`docs/experiments/2026-11-tier-comparison.md`) are fixed, 4 deferred: more refused ranges and IPv6 translation forms (ADR-005 amendment 1), a bounded DNS lookup, complete-stream and multi-member decoding (ADR-003 amendment 2), robots.txt reading version 2 (`MATCHER_VERSION` 2: a 500 KiB parsing limit), fragments never requested, and tests for the network layer's deadline and TLS paths. DESIGN.md is at draft 2.9.
 
-**Next:** Phase 5 (DESIGN.md section 10), which tests C-2 and C-5. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**Session 6a stopped at the store (2026-11-04).** A whole-fetch time budget (`fetch_timeout`, ADR-005 amendment 2) and an accurate bare `cernis` message are built. The receipt store is not: sovereign-sdk-ledger 1.3.0 has no public way to read entries back (`docs/SDK-FRICTION.md`, 2026-11-04), so C-5 awaits the Owner's decision. DESIGN.md is at draft 2.10.
+
+**Next:** the Owner's decision on C-5 and the store, then Phase 5 (DESIGN.md section 10), which tests C-2 and C-5. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 

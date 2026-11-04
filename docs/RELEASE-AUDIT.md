@@ -14,8 +14,13 @@ The session records' own lists are not rewritten; this file supersedes them as t
    *Session 5e:* tests now cover a successful pinned HTTPS handshake given the hostname, IPv6 pins, the Unix-socket refusal, and the transport refusal on a new fetcher; the TLS trust store is documented as certifi's. Still to review: keep-alive reuse, and the discarded parent pool (finding D26, deferred).
 3. **URLs that come from content**, end to end: canonicals, `og:image`, article-body links, sitemap documents and their index children, robots.txt `Sitemap:` lines, and the DEV API. Check each against a hostile site: the address screen on every hop, robots.txt, pacing, the caps, IDN hosts, `data:` and other non-http values, and DESIGN.md section 6 and principle 9 on what Cernis may fetch. *SESSION-05a #22, SESSION-05b #28*
 4. **The deadline**: whether any httpcore operation escapes the wrapped stream (connection-pool waits, HTTP/2 if it is ever enabled), and how it interacts with `read_timeout`, `connect_timeout`, and pacing. *SESSION-03b #3*
-   *Session 5e:* resolving is bounded by `connect_timeout`; the deadline is checked for every chunk; tests cover reads, connects across pinned addresses, the TLS handshake, and a trickled body. Still open: a budget for a whole fetch (finding D33, deferred: a design decision).
+   *Session 5e:* resolving is bounded by `connect_timeout`; the deadline is checked for every chunk; tests cover reads, connects across pinned addresses, the TLS handshake, and a trickled body. *Session 6a:* a budget for a whole fetch (`fetch_timeout`, 120 s; finding D33, ADR-005 amendment 2). Review: how the budget interacts with pacing waits and retries, that a robots.txt fetch is never charged to the page's budget, and that a request with no time left is never sent.
 5. **The cache**, never re-audited under the one-audit rule: its bounded reads and its trust model, and `store_body=False` (neither reads nor writes the cache for the resource and its redirect targets; robots.txt still uses it; the body limit still applies). Bounded decoding, the other half of this item, was audited in the tier comparison and fixed in Session 5e. *SESSION-03b #6, SESSION-05a #26*
+
+## 1b. Session 6a
+
+32. **The bare `cernis` message** now describes what Cernis does and points to `cernis --help`; check it against what is published. *SESSION-06a #1*
+33. **The store, when it is built**: Session 6a stopped before building it (C-5, `docs/SDK-FRICTION.md` 2026-11-04). Whatever the Owner decides, review then: single-writer locking, that a failed run is never appended, canonical JSON and its schema version, no page bodies in the store, and tamper detection (an edited, a deleted, and a truncated entry). *SESSION-06a #2*
 
 ## 2. Untrusted input Cernis parses
 

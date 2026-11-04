@@ -23,13 +23,12 @@ from cernis.sources import Listing, SourceError, from_dev_user, from_sitemap
 from cernis.urls import normalize_url
 
 STATUS_MESSAGE = (
-    "Cernis is in early development and nothing is usable yet. It will be a "
-    "content discoverability auditor for published articles: it will fetch a "
-    "published article and the things around it, run deterministic checks, and "
-    "report findings that distinguish what was observed, what is recommended, "
-    "and what cannot be determined, with no scores and no predicted outcomes. "
-    "Run `cernis audit <url>` to audit a page, or `cernis checks` to see the checks. "
-    f"Follow along at {REPOSITORY_URL}."
+    "Cernis is a content discoverability auditor for published articles. It "
+    "fetches an article and the things around it, runs deterministic checks, "
+    "and reports what it observed, what it recommends, and what it cannot "
+    "determine, with no scores and no predicted outcomes. "
+    "Run `cernis --help` to see the commands. "
+    f"Source and documentation: {REPOSITORY_URL}."
 )
 
 

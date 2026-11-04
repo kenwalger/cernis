@@ -23,7 +23,8 @@ Nothing is parsed here except robots.txt.
   requested URL, up to ``max_attempts`` attempts in all. The wait is the
   ``Retry-After`` value when there is a usable one, otherwise
   ``backoff_base * 2 ** (attempt - 1)``, capped at ``backoff_cap``. A
-  ``Retry-After`` longer than the cap stops the retries at once. Every
+  ``Retry-After`` longer than the cap, or a wait the fetch budget has no
+  room for, stops the retries at once. Every
   attempt gets its own receipt (SESSION-03.md decision 2).
 - **Bodies** are read up to ``max_body_bytes``, counting both the bytes
   received and the bytes after decoding. A longer body is not read further;
@@ -52,6 +53,14 @@ Nothing is parsed here except robots.txt.
   to the time left. Resolving the host, which comes before the request, is
   bounded separately by ``connect_timeout``; a lookup that takes longer is
   ``TIMEOUT``, and nothing is sent.
+- **Budget**: ``fetch_timeout`` bounds a whole fetch: every attempt, retry
+  wait, pacing wait, and redirect hop of the requested URL. A request's
+  deadline is the sooner of its ``total_timeout`` and the budget's end; a
+  retry whose wait would outlast the budget is not made; a request with no
+  time left is ``TIMEOUT`` and is not sent. Each robots.txt fetch has its own
+  budget, and its time is given back to the page's, so a slow page cannot
+  make an origin's robots.txt time out and the origin be disallowed
+  (ADR-005 amendment 2).
 - **Pacing**: at most one request per ``min_interval`` seconds per host,
   counting robots.txt and every redirect hop. A trailing dot does not make
   another host (``example.com.`` is ``example.com``).
@@ -125,8 +134,14 @@ class FetchConfig:
         the end of its body, so a server that sends slowly cannot hold a
         request open. It bounds each request, not a whole fetch: one fetch
         makes up to ``max_attempts`` attempts of up to ``max_redirects + 1``
-        requests each, plus a robots.txt fetch for each new origin, and
-        each request has its own deadline.
+        requests each, and each request has its own deadline.
+    :param fetch_timeout: Seconds one whole fetch may take: every attempt,
+        retry wait, pacing wait, and redirect of the requested URL. A retry
+        whose wait would end past it is not made, and a request with no time
+        left is ``TIMEOUT`` without being sent. Each robots.txt fetch has a
+        budget of its own, and the time it takes is never charged to the
+        page's, so a slow page cannot make its origins' robots.txt time out
+        (ADR-005 amendment 2).
     :param max_body_bytes: The most body bytes read from one response.
     :param max_redirects: The most redirects followed in one attempt.
     :param min_interval: The minimum seconds between requests to one host.
@@ -145,6 +160,7 @@ class FetchConfig:
     connect_timeout: float = 10.0
     read_timeout: float = 20.0
     total_timeout: float = 60.0
+    fetch_timeout: float = 120.0
     max_body_bytes: int = 5 * 1024 * 1024
     max_redirects: int = 10
     min_interval: float = 1.0
@@ -159,7 +175,7 @@ class FetchConfig:
 
         :raises ValueError: If a setting is out of range.
         """
-        for name in ("connect_timeout", "read_timeout", "total_timeout"):
+        for name in ("connect_timeout", "read_timeout", "total_timeout", "fetch_timeout"):
             if not getattr(self, name) > 0:
                 raise ValueError(f"FetchConfig: {name} must be positive")
         for name in ("min_interval", "backoff_base", "backoff_cap"):
@@ -609,6 +625,9 @@ class Fetcher:
         # any; cleared while its origin's robots.txt is fetched.
         self._no_store_url: str | None = None
         self._robots: dict[str, tuple[RobotsPolicy, tuple[Receipt, ...]]] = {}
+        # When the current fetch's budget ends, on the monotonic clock, or None
+        # outside a fetch. robots.txt fetches swap in a budget of their own.
+        self._budget: float | None = None
 
     def __enter__(self) -> Self:
         """Use the fetcher as a context manager.
@@ -656,10 +675,12 @@ class Fetcher:
         url = str(httpx.URL(url).copy_with(fragment=None))
         decisions: list[RobotsDecision] = []
         self._no_store_url = None if store_body else url
+        self._budget = self._clock() + self.config.fetch_timeout
         try:
             receipts, body, disallowed = self._attempts(url, decisions)
         finally:
             self._no_store_url = None
+            self._budget = None
         if not store_body:
             body = None
         robots_receipts: list[Receipt] = []
@@ -698,10 +719,19 @@ class Fetcher:
                 break
             receipts.append(attempt.receipt)
             delay = self._retry_delay(attempt.receipt, number)
-            if delay is None:
+            if delay is None or not self._budget_allows(delay):
                 break
             self._sleep(delay)
         return tuple(receipts), attempt.body, attempt.disallowed_url
+
+    def _budget_allows(self, wait: float) -> bool:
+        """Tell whether the current budget has time left after a wait.
+
+        :param wait: Seconds about to be waited.
+        :return: Whether time is left once the wait ends; always true outside
+            a fetch.
+        """
+        return self._budget is None or self._clock() + wait < self._budget
 
     def _retry_delay(self, receipt: Receipt, number: int) -> float | None:
         """Decide whether to retry after an attempt, and how long to wait.
@@ -744,10 +774,16 @@ class Fetcher:
             # robots.txt is not the resource store_body=False protects, so it
             # uses the cache even in the middle of such a fetch.
             no_store, self._no_store_url = self._no_store_url, None
+            # A budget of its own, and its time is given back to the page's, so
+            # a slow page never makes an origin's robots.txt time out.
+            page_budget, started = self._budget, self._clock()
+            self._budget = started + self.config.fetch_timeout
             try:
                 receipts, body, _ = self._attempts(robots_url, None)
             finally:
                 self._no_store_url = no_store
+                spent = self._clock() - started
+                self._budget = None if page_budget is None else page_budget + spent
             self._robots[robots_url] = (RobotsPolicy(robots_url, receipts[-1], body), receipts)
 
     def _allowed(self, url: str, decisions: list[RobotsDecision]) -> bool:
@@ -903,16 +939,21 @@ class Fetcher:
                 conditional["If-Modified-Since"] = cached.last_modified
         sent_at = self._now()
         started = self._clock()
+        if not self._budget_allows(0):
+            return _Exchange(sent_at=sent_at, status=None, error=ErrorKind.TIMEOUT)
         status: int | None = None
         headers: tuple[tuple[str, str], ...] = ()
         refusal = None
-        self._network.deadline = started + self.config.total_timeout
+        deadline = started + self.config.total_timeout
+        if self._budget is not None:
+            deadline = min(deadline, self._budget)
+        self._network.deadline = deadline
         try:
             with self._client.stream("GET", url, headers=conditional) as response:
                 status = response.status_code
                 headers = _recorded_headers(response.headers)
-                self._check_deadline(started)
-                return self._read_response(url, response, cached, sent_at, started)
+                self._check_deadline(deadline)
+                return self._read_response(url, response, cached, sent_at, deadline)
         except (httpx.TimeoutException, _TotalTimeoutError):
             kind = ErrorKind.TIMEOUT
         except _UnreadableBodyError:
@@ -927,13 +968,15 @@ class Fetcher:
             sent_at=sent_at, status=status, error=kind, headers=headers, refusal=refusal
         )
 
-    def _check_deadline(self, started: float) -> None:
-        """Stop a request that has run longer than ``total_timeout``.
+    def _check_deadline(self, deadline: float) -> None:
+        """Stop a request that has run past its deadline.
 
-        :param started: When the request was sent, on the monotonic clock.
+        :param deadline: When the request must end, on the monotonic clock:
+            ``total_timeout`` after it was sent, or the fetch budget's end if
+            that is sooner.
         :raises _TotalTimeoutError: If the deadline has passed.
         """
-        if self._clock() - started > self.config.total_timeout:
+        if self._clock() > deadline:
             raise _TotalTimeoutError
 
     def _read_response(
@@ -942,7 +985,7 @@ class Fetcher:
         response: httpx.Response,
         cached: CacheEntry | None,
         sent_at: datetime,
-        started: float,
+        deadline: float,
     ) -> _Exchange:
         """Turn a streamed response into an exchange, and update the cache.
 
@@ -950,8 +993,8 @@ class Fetcher:
         :param response: The open response.
         :param cached: The cache entry the request was conditional on, if any.
         :param sent_at: When the request was sent, on the wall clock.
-        :param started: When the request was sent, on the monotonic clock.
-        :return: The exchange. A body that takes longer than ``total_timeout``
+        :param deadline: When the request must end, on the monotonic clock.
+        :return: The exchange. A body that runs past the deadline
             or cannot be decoded raises out of here, so :meth:`_exchange`
             records the failure with the status and headers it already has.
         """
@@ -991,7 +1034,7 @@ class Fetcher:
         truncated = False
         for chunk in response.iter_raw():
             # Every chunk, the one that fills the limit included.
-            self._check_deadline(started)
+            self._check_deadline(deadline)
             received += len(chunk)
             buffer += decoder.feed(chunk, limit + 1 - len(buffer))
             if len(buffer) > limit or received > limit:

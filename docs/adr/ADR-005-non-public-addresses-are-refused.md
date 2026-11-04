@@ -59,3 +59,13 @@ The open gaps, after this amendment:
 4. **Other IPv6 transition forms:** Teredo is closed, and so are the IPv4-translated form and the local-use translation prefix. Two forms remain open, because an address cannot reveal them: ISATAP interface identifiers (`::5efe:a.b.c.d` under any prefix), and NAT64 network-specific prefixes chosen by an operator.
 5. **Proxies:** unchanged.
 6. **The private httpx detail:** unchanged. `GuardedTransport`'s docstring now says what TLS trusts: certifi's bundle, which httpx 0.28 loads, not the operating system's store.
+
+## Amendment 2 (2026-11-04, Session 6a): a time budget for a whole fetch
+
+Finding D33 of the tier comparison (`docs/experiments/2026-11-tier-comparison.md`), deferred in Session 5e: `total_timeout` bounds each request, so one fetch could run for `max_attempts x (max_redirects + 1) x total_timeout` (about 33 minutes at the defaults), plus robots.txt fetches. A server chosen by page content could hold a run that long.
+
+- **`FetchConfig.fetch_timeout`**, default 120 seconds, bounds one whole fetch of the requested URL: every attempt, retry wait, pacing wait, and redirect hop.
+- **Each request's deadline** is the sooner of `total_timeout` after it is sent and the budget's end. A retry whose wait would end at or past the budget is not made, and the last attempt's receipt stands. A request with no time left after its pacing wait is `TIMEOUT`, with no status, and is not sent.
+- **robots.txt is never charged to the page.** Each robots.txt fetch, including one for a redirect target's origin in the middle of a chain, gets a budget of its own from its own start, and the time it takes is added back to the page's budget. A robots.txt that times out makes its origin unreachable, so everything there is disallowed, for the rest of the run (RFC 9309 section 2.3.1.4). If the page's budget also covered robots.txt, a slow page could get a whole origin disallowed; it cannot.
+- **What a fetch can still take:** its own budget, plus at most one robots.txt budget per origin it reaches (at most `max_redirects + 1` of them). The address screen's lookup is bounded by `connect_timeout` (amendment 1) and counts toward the budget it falls in.
+- **Not a CLI option yet**, like the other timeouts. It is a `FetchConfig` setting.

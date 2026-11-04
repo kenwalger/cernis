@@ -34,13 +34,15 @@ def test_package_version_is_the_installed_distribution_version() -> None:
 
 
 def test_no_arguments_prints_status_paragraph(capsys: pytest.CaptureFixture[str]) -> None:
-    """``cernis`` with no arguments describes the project and returns 0."""
+    """``cernis`` with no arguments says what Cernis does and where the commands are."""
     assert main([]) == 0
 
     out = capsys.readouterr().out
-    assert "early development" in out
     assert "discoverability" in out
+    assert "cernis --help" in out
     assert REPOSITORY_URL in out
+    assert "nothing is usable" not in out
+    assert "early development" not in out
 
 
 def test_module_entry_point_exits_zero() -> None:

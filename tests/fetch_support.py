@@ -24,6 +24,7 @@ class ConfigOverrides(TypedDict, total=False):
     connect_timeout: float
     read_timeout: float
     total_timeout: float
+    fetch_timeout: float
     max_body_bytes: int
     max_redirects: int
     min_interval: float

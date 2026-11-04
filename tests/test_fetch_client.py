@@ -17,6 +17,7 @@ from fetch_support import (
     ChunkStream,
     FakeResolver,
     FakeTime,
+    Reply,
     Site,
     make_fetcher,
     redirect,
@@ -548,8 +549,16 @@ def test_backoff_is_capped(tmp_path: Path) -> None:
     site.add(PAGE, respond(429))
     time = FakeTime()
 
+    # A budget long enough that only the cap limits the waits.
     make_fetcher(
-        site, tmp_path, time, min_interval=0, backoff_base=40, backoff_cap=60, max_attempts=4
+        site,
+        tmp_path,
+        time,
+        min_interval=0,
+        backoff_base=40,
+        backoff_cap=60,
+        max_attempts=4,
+        fetch_timeout=300,
     ).fetch(PAGE)
 
     assert time.sleeps == [40.0, 60.0, 60.0]
@@ -656,6 +665,110 @@ def test_parse_retry_after(value: str | None, seconds: float | None) -> None:
     assert parse_retry_after(value, FIXED_NOW) == seconds
 
 
+# The whole-fetch budget
+
+
+def _slow(time: FakeTime, seconds: float, reply: Reply) -> Reply:
+    """Wrap a reply so that answering takes fake time.
+
+    :param time: The fake time.
+    :param seconds: How long each answer takes.
+    :param reply: The reply to give.
+    :return: The slow reply.
+    """
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        time.now += seconds
+        assert not isinstance(reply, BaseException)
+        return reply(request)
+
+    return answer
+
+
+def test_retries_stop_when_the_fetch_budget_runs_out(tmp_path: Path) -> None:
+    """A wait that would end past fetch_timeout is not taken, and nothing more is sent."""
+    site = Site()
+    site.add(PAGE, respond(503, headers={"retry-after": "50"}))
+    time = FakeTime()
+
+    fetcher = make_fetcher(
+        site, tmp_path, time, max_attempts=5, backoff_cap=60, fetch_timeout=120, min_interval=0
+    )
+    result = fetcher.fetch(PAGE)
+
+    # Attempts at 0 s, 50 s, and 100 s; the next would start at 150 s.
+    assert [r.status_code for r in result.receipts] == [503, 503, 503]
+    assert time.sleeps == [50.0, 50.0]
+
+
+def test_a_redirect_chain_is_cut_off_at_the_fetch_budget(tmp_path: Path) -> None:
+    """Each hop takes its share; the hop that would run past fetch_timeout is TIMEOUT."""
+    site = Site()
+    time = FakeTime()
+    hops = [f"https://example.com/{n}" for n in range(4)]
+    for here, there in itertools.pairwise(hops):
+        site.add(here, _slow(time, 50, redirect(there)))
+    site.add(hops[-1], respond(200))
+
+    fetcher = make_fetcher(
+        site, tmp_path, time, fetch_timeout=120, total_timeout=60, min_interval=0
+    )
+    receipt = fetcher.fetch(hops[0]).receipts[0]
+
+    assert (receipt.error_kind, receipt.final_url) == (ErrorKind.TIMEOUT, hops[2])
+    assert hops[3] not in site.urls()
+
+
+def test_a_request_the_budget_has_no_time_left_for_is_never_sent(tmp_path: Path) -> None:
+    """When pacing ends past the budget, the request is TIMEOUT with nothing sent."""
+    site = Site()
+    site.add(PAGE, respond(200))
+
+    result = make_fetcher(site, tmp_path, fetch_timeout=120, min_interval=200).fetch(PAGE)
+
+    (receipt,) = result.receipts
+    assert (receipt.error_kind, receipt.status_code, receipt.final_url) == (
+        ErrorKind.TIMEOUT,
+        None,
+        PAGE,
+    )
+    assert site.urls() == ["https://example.com/robots.txt"]
+
+
+def test_robots_txt_has_its_own_fetch_budget(tmp_path: Path) -> None:
+    """robots.txt retries are bounded by a budget of their own, from its own start."""
+    site = Site()
+    site.add("https://example.com/robots.txt", respond(503, headers={"retry-after": "50"}))
+    time = FakeTime()
+
+    fetcher = make_fetcher(
+        site, tmp_path, time, max_attempts=5, backoff_cap=60, fetch_timeout=120, min_interval=0
+    )
+    result = fetcher.fetch(PAGE)
+
+    assert [r.status_code for r in result.robots_receipts] == [503, 503, 503]
+    assert result.disallowed_url == PAGE
+
+
+def test_a_slow_page_never_runs_its_robots_txt_out_of_time(tmp_path: Path) -> None:
+    """robots.txt fetched mid-chain is not charged to the page, so the origin is not disallowed."""
+    site = Site()
+    time = FakeTime()
+    site.add(PAGE, _slow(time, 110, redirect(OTHER)))
+    site.add("https://other.example/robots.txt", _slow(time, 30, respond(200, b"User-agent: *\n")))
+    site.add(OTHER, respond(200))
+
+    # The page takes 110 s of its 120; other.example's robots.txt then takes 30.
+    fetcher = make_fetcher(
+        site, tmp_path, time, fetch_timeout=120, total_timeout=115, min_interval=0
+    )
+    result = fetcher.fetch(PAGE)
+
+    assert [r.status_code for r in result.robots_receipts] == [404, 200]
+    assert [decision.allowed for decision in result.robots] == [True, True]
+    assert (result.receipts[0].status_code, result.receipts[0].final_url) == (200, OTHER)
+
+
 # Pacing
 
 
@@ -734,6 +847,7 @@ def test_a_retry_wait_counts_toward_pacing(tmp_path: Path) -> None:
         {"connect_timeout": 0},
         {"read_timeout": -1},
         {"total_timeout": 0},
+        {"fetch_timeout": 0},
         {"max_body_bytes": 0},
         {"max_redirects": -1},
         {"min_interval": -0.1},
