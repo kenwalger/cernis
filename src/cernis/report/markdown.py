@@ -22,10 +22,15 @@ from a page is escaped so it cannot become Markdown or HTML.
 
 import re
 from itertools import groupby
+from typing import TYPE_CHECKING
 
 from cernis.checks.registry import SITE_LEVEL
 from cernis.model import Evidence, Finding, Run, Snapshot, Status
 from cernis.report.json_report import author_defects, checks_in, section_counts
+
+if TYPE_CHECKING:
+    # The store imports the report's serializers; the status is only read here.
+    from cernis.store.base import LedgerStatus
 
 MAX_VALUE = 160
 """The most characters of an evidence value the Markdown report shows."""
@@ -269,10 +274,28 @@ def _groups(run: Run) -> list[tuple[str | None, list[tuple[str | None, str, bool
     return groups
 
 
-def report_markdown(run: Run) -> str:
+def ledger_line(ledger: "LedgerStatus") -> str:
+    """Say in the report header whether the run went to the receipt store.
+
+    :param ledger: The run's ledger status.
+    :return: ``Ledger: recorded, tip <sequence> <hash>`` or ``Ledger: not recorded: <why>``.
+    """
+    if not ledger.recorded:
+        return f"Ledger: not recorded: {escape(ledger.reason or 'unknown reason')}"
+    line = f"Ledger: recorded, tip {ledger.tip}"
+    if ledger.reason is not None:
+        line += f"; but {escape(ledger.reason)}"
+    if ledger.checked_before is not None and ledger.checked_before.value == "NOT_DETERMINABLE":
+        line += " (before this run, the ledger had no anchor to check against: not determinable)"
+    return line
+
+
+def report_markdown(run: Run, ledger: "LedgerStatus | None" = None) -> str:
     """Render a run as the Markdown report.
 
     :param run: The run.
+    :param ledger: Whether the run went to the receipt store, or ``None``
+        when there is no store (the header then has no ledger line).
     :return: The report, with a trailing newline.
     """
     counts = section_counts(run)
@@ -288,6 +311,7 @@ def report_markdown(run: Run) -> str:
         f"Run: {run.id} · Cernis {run.cernis_version}",
         f"Started: {run.started_at.isoformat()} · Finished: {run.finished_at.isoformat()}",
         f"Checks: {checks or 'none'}",
+        *([ledger_line(ledger)] if ledger is not None else []),
         "",
         "Subjects:",
         "",

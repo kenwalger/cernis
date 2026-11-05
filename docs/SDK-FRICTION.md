@@ -41,3 +41,28 @@ Cernis is the first consumer of the Sovereign Systems SDK outside the SDK's own 
 **What worked.** Appending with an empty signature, the returned tip, and `verify_ledger_integrity(expected_tip_hash=...)` behaved as documented. Zero runtime dependencies and Python 3.12+ match Cernis.
 
 **Effect on claim C-5** (DESIGN.md section 8): Cernis cannot store and read its history through the ledger's public API without an addition to that API (friction 1), which is C-5's falsifier. Session 6a stopped before building the store and left the result for the Owner to record.
+
+## 2026-11-04: sovereign-sdk-ledger 2.0.0 as Cernis's receipt store (Session 6b)
+
+**Tried.** The receipt store on sovereign-sdk-ledger 2.0.0, which fixed the 1.3.0 gaps above: `append_entry` with idempotency keys, explicit unsigned entries, `iter_entries`, `get_tip`, and `verify_ledger` with reason codes. Built behind `ReceiptStore` (`src/cernis/store/ledger.py`), using only names in `sovereign_ledger.__all__`. Every Session 6a item works without an SDK change, so claim C-5b holds (DESIGN.md section 8). What remains is friction, each with a suggestion.
+
+**Friction 1: no `py.typed` marker.** The package is fully annotated, but without the marker mypy treats it as untyped, so under `--strict` every ledger name is `Any`. Workaround: a Cernis-owned stub of the public names Cernis uses (`typings/sovereign_ledger/__init__.pyi`), checked against the installed package by a test. **Suggestion:** ship `py.typed`.
+
+**Friction 2: opening a file recreates dropped custody triggers, silently.** After a test dropped `prevent_update_forensic_ledger` and edited an entry, the next `SovereignLedger(...)` put the trigger back without saying so. Verification still caught the edited entry (`BROKEN_LINK`), but a dropped trigger is itself evidence of tampering, and it is erased by any open, including a read or a verify. Opening also means even a verify writes to the file. **Suggestion:** report missing triggers (for example in `LedgerIntegrityReport`) instead of, or before, recreating them; and offer a read-only open for reading and verifying.
+
+**Friction 3: no lookup by idempotency key.** `IdempotencyKeyConflictError` says a key is taken, not whether the recorded entry has the same content. A consumer that must tell a retry (same content) from a reused key (different content) has to scan every entry with `iter_entries()`. Cernis scans once per run before appending. **Suggestion:** `get_entry(idempotency_key)`, or the recorded entry's `sequence` and `payload_hash` on the error.
+
+**Friction 4: the PyPI page's arrows are mojibake.** The quick start's output comments read `# â†’ 1 SIGNED check-monday` on PyPI (the description as PyPI serves it); the repository's `docs/sovereign-ledger.md` shows `→`. **Suggestion:** declare the long description as UTF-8 Markdown when building.
+
+**Friction 5: reason codes print differently from the docs.** `IntegrityFailureReason` values are lowercase (`tip_mismatch`), while the README and the reference write the names (`TIP_MISMATCH`). Cernis prints `.name`, to match the docs. **Suggestion:** use the names as values, or say which to show.
+
+**Friction 6: a single writer across processes is still the consumer's job** (1.3.0 friction 5, unchanged). `BEGIN IMMEDIATE` and the 5-second `busy_timeout` serialize appends, so a second process waits and then fails with `sqlite3.OperationalError`. Cernis takes an OS file lock (`ledger.db.lock`) before it fetches anything. **Suggestion:** as before, an exclusive-open option.
+
+**What worked.**
+- Identical content recorded once per append, with retries made safe by the idempotency key.
+- The explicit `UNSIGNED` entry; an empty signature is refused, as documented.
+- `iter_entries()` refuses to yield a failed entry, and reports its `sequence` and `reason`.
+- `verify_ledger(expected_tip=...)` gives `TIP_MISMATCH` for a truncated tail, and accepts entries after the anchor.
+- No runtime dependencies (`uv lock` added only `sovereign-sdk-ledger`).
+
+**Friction 7 (found by audit `aud_GN220m1Nam`, Session 6b): durability is the SDK's choice, and not exposed.** The ledger opens with `synchronous = NORMAL` in WAL mode, which, as the SDK's reference says, can lose the last transactions on an OS crash or power failure. A consumer that writes its own tip anchor after an append, fsynced, can then hold an anchor naming an entry the ledger lost, which verification reports as `TIP_MISMATCH`, the same as tampering. Cernis documents the recovery (move the store aside). **Suggestion:** an option for `synchronous = FULL`, or an append that returns only once the entry is durable.

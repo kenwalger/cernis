@@ -35,7 +35,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Session 6a stopped at the store (2026-11-04).** A whole-fetch time budget (`fetch_timeout`, ADR-005 amendment 2) and an accurate bare `cernis` message are built. The receipt store is not: sovereign-sdk-ledger 1.3.0 has no public way to read entries back (`docs/SDK-FRICTION.md`, 2026-11-04), so C-5 awaits the Owner's decision. DESIGN.md is at draft 2.10.
 
-**Next:** the Owner's decision on C-5 and the store, then Phase 5 (DESIGN.md section 10), which tests C-2 and C-5. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**The receipt store is built (session 6b, 2026-11-04).** C-5 falsified; the gaps were fixed in the SDK as sovereign-sdk-ledger 2.0.0. `src/cernis/store/` (ADR-002 amendment 1): the ledger store and an in-memory store behind `ReceiptStore`, `cernis runs`, `cernis history`, and `cernis store verify`; DESIGN.md section 5, "The receipt ledger". Claim C-5b holds. DESIGN.md is at draft 2.11.
+
+**Next:** the history diff and change classification (Phase 5, DESIGN.md section 10), which test C-2. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 
@@ -96,3 +98,7 @@ Do not add AI attribution anywhere: no `Co-Authored-By` trailers, "Generated wit
 ## Git workflow
 
 Never commit. The author commits. Write the message to `commit-message.txt` and stop.
+
+## Audit Policy
+
+Audit policy: ask.

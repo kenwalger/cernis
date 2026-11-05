@@ -1,6 +1,6 @@
 # Cernis audit
 
-Run: 20261030T120000Z · Cernis 0.1.0.dev0
+Run: 20261030T120000Z-0a1b2c · Cernis 0.1.0.dev0
 Started: 2026-10-30T12:00:00+00:00 · Finished: 2026-10-30T12:00:01+00:00
 Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 2 · peri.og.url_matches_canonical 2 · peri.lang 2 · peri.jsonld.parses 1 · peri.title 1 · peri.robots.directives 1 · epi.canonical.resolves 1 · epi.og.image.resolves 1 · epi.robots.access 1+c1+m2 · epi.sitemap.listed 1 · epi.links.resolve 1
 

@@ -1,7 +1,9 @@
 """Command-line interface for Cernis."""
 
 import argparse
+import contextlib
 import json
+import re
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -14,12 +16,37 @@ from cernis.checks.links import LinkLimits
 from cernis.checks.registry import CHECKS, CheckSpec
 from cernis.fetch import FetchConfig, Fetcher, FetchError, FetchResult, RobotsDecision
 from cernis.fetch.cache import DEFAULT_CACHE_DIR
-from cernis.model import Receipt, RunSource
+from cernis.model import Receipt, Run, RunSource
 from cernis.pairs import PairMap, PairMapError, load_pair_map
 from cernis.parse import SitePrefix, SiteType
 from cernis.report import report_json, report_markdown
 from cernis.report.json_report import receipt_as_dict
 from cernis.sources import Listing, SourceError, from_dev_user, from_sitemap
+from cernis.store import (
+    DEFAULT_STORE_DIR,
+    LedgerStatus,
+    LedgerStore,
+    Recorded,
+    RunWriter,
+    StoreAnchorError,
+    StoredEntry,
+    StoreError,
+    StoreIntegrityError,
+    StoreLockedError,
+    StoreTip,
+    Verification,
+    VerificationStatus,
+    run_history,
+    stored_runs,
+)
+from cernis.store.read import (
+    ANCHOR_GAPS,
+    anchor_gap,
+    format_history_json,
+    format_history_markdown,
+    format_runs_json,
+    format_runs_markdown,
+)
 from cernis.urls import normalize_url
 
 STATUS_MESSAGE = (
@@ -54,6 +81,7 @@ def _add_run_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="allow loopback addresses, for testing against a local server",
     )
+    _add_store_option(parser)
     parser.add_argument(
         "--max-links-per-page",
         type=_count,
@@ -81,6 +109,41 @@ def _add_run_options(parser: argparse.ArgumentParser) -> None:
             f"(default: {AuditLimits().sitemap_documents})"
         ),
     )
+
+
+def _add_store_option(parser: argparse.ArgumentParser) -> None:
+    """Add ``--store``, the receipt store directory.
+
+    :param parser: The subcommand's parser.
+    """
+    parser.add_argument(
+        "--store",
+        type=Path,
+        default=DEFAULT_STORE_DIR,
+        metavar="DIR",
+        help=f"the receipt store directory (default: {DEFAULT_STORE_DIR})",
+    )
+
+
+def _expected_tip(text: str) -> StoreTip:
+    """Read ``SEQUENCE:HASH``, for ``--expected-tip``.
+
+    :param text: The argument.
+    :return: The tip.
+    :raises argparse.ArgumentTypeError: If it is not a sequence number, a
+        colon, and a hash.
+    """
+    sequence, colon, entry_hash = text.partition(":")
+    if (
+        not colon
+        or not sequence.isdigit()
+        or int(sequence) < 1
+        or re.fullmatch(r"[0-9a-fA-F]{64}", entry_hash) is None
+    ):
+        raise argparse.ArgumentTypeError(
+            f"must be SEQUENCE:HASH, a sequence of at least 1 and a SHA-256, got {text!r}"
+        )
+    return StoreTip(sequence=int(sequence), entry_hash=entry_hash.lower())
 
 
 def _add_listing_options(parser: argparse.ArgumentParser) -> None:
@@ -235,6 +298,45 @@ def build_parser() -> argparse.ArgumentParser:
     _add_listing_options(pairs_parser)
     for sub in (audit_parser, pair_parser, pairs_parser):
         _add_run_options(sub)
+    runs = commands.add_parser(
+        "runs",
+        help="list the runs in the receipt store",
+        description="List every complete run in the receipt store, read back verified.",
+    )
+    history = commands.add_parser(
+        "history",
+        help="list every stored run that audited a URL, with its findings for it",
+        description=(
+            "List every complete run in the receipt store that audited the URL, each with "
+            "its findings about it, by finding key."
+        ),
+    )
+    history.add_argument("url", help="the URL, compared after Cernis's URL normalization")
+    for sub in (runs, history):
+        sub.add_argument(
+            "--format", choices=("md", "json"), default="md", help="output format (default: md)"
+        )
+        _add_store_option(sub)
+    store = commands.add_parser(
+        "store", help="check the receipt store", description="Check the receipt store."
+    )
+    store_commands = store.add_subparsers(dest="store_command", metavar="<command>", required=True)
+    verify = store_commands.add_parser(
+        "verify",
+        help="verify the whole ledger against its tip anchor",
+        description=(
+            "Verify every entry of the ledger, and check that the anchored tip is still "
+            "there, so a ledger cut short is caught. Exit 0 when verified, 1 when "
+            "verification fails, and 3 when it is not determinable (no anchor)."
+        ),
+    )
+    verify.add_argument(
+        "--expected-tip",
+        type=_expected_tip,
+        metavar="SEQUENCE:HASH",
+        help="a tip kept elsewhere, checked instead of the anchor file",
+    )
+    _add_store_option(verify)
     fetch = commands.add_parser(
         "fetch",
         help="fetch one URL politely and print its receipts, for manual checking",
@@ -420,6 +522,7 @@ class RunOptions:
     :param cache_dir: The cache directory.
     :param allow_loopback: Whether loopback addresses are allowed.
     :param limits: The limits on fetches around each page.
+    :param store: The receipt store directory.
     """
 
     command: str
@@ -428,6 +531,7 @@ class RunOptions:
     cache_dir: Path
     allow_loopback: bool = False
     limits: AuditLimits = field(default_factory=AuditLimits)
+    store: Path = DEFAULT_STORE_DIR
 
 
 def _load_map(pair_map: Path | None, command: str) -> PairMap | None:
@@ -458,8 +562,8 @@ def _site_for(url: str, declared: SiteType | None, pair_map: PairMap) -> SiteTyp
     return declared or pair_map.site_types().get(normalize_url(url))
 
 
-Work = Callable[[RunFetches], int]
-"""What a command does with the run's fetches; returns the exit code."""
+Work = Callable[[RunFetches, RunWriter], int]
+"""What a command does with the run's fetches and the store's writer; returns the exit code."""
 
 
 def _loopback_refused(options: RunOptions, source: "SourceOptions") -> bool:
@@ -491,21 +595,44 @@ def _loopback_refused(options: RunOptions, source: "SourceOptions") -> bool:
     return False
 
 
-def _with_fetches(options: RunOptions, work: Work) -> int:
+class _NoWriter:
+    """Stands in for the store's writer when a command records nothing (``--list-only``)."""
+
+    def record(self, run: Run) -> Recorded:
+        """Refuse: a listing makes no run.
+
+        :param run: The run.
+        :return: Never returns.
+        :raises StoreError: Always.
+        """
+        raise StoreError(f"run {run.id}: this command records nothing")
+
+
+def _with_fetches(options: RunOptions, work: Work, *, records: bool = True) -> int:
     """Open one fetcher for the run, and do the work with it.
 
     :param options: The shared options.
     :param work: The work.
-    :return: The work's exit code, or 2 when a URL cannot be fetched at all
-        or a source cannot be listed.
+    :param records: Whether the work records a run; ``False`` for
+        ``--list-only``, which then opens no store at all.
+    :return: The work's exit code, or 2 when a URL cannot be fetched at all,
+        a source cannot be listed, or another command is writing to the store.
+        The store's writer is taken before anything is fetched, so a second
+        writer is refused at once.
     """
     config = FetchConfig(cache_dir=options.cache_dir, allow_loopback=options.allow_loopback)
     try:
-        with Fetcher(config) as fetcher:
-            return work(RunFetches(fetcher))
-    except (FetchError, SourceError) as exc:
+        store = (
+            LedgerStore(options.store).writer() if records else contextlib.nullcontext(_NoWriter())
+        )
+        with store as writer, Fetcher(config) as fetcher:
+            return work(RunFetches(fetcher), writer)
+    except (FetchError, SourceError, StoreLockedError) as exc:
         print(f"cernis {options.command}: {exc}", file=sys.stderr)
         return 2
+    except StoreError as exc:
+        print(f"cernis {options.command}: {exc}", file=sys.stderr)
+        return 1
 
 
 def _write(options: RunOptions, text: str) -> int:
@@ -526,9 +653,62 @@ def _write(options: RunOptions, text: str) -> int:
     return 0
 
 
+def _run_clock() -> datetime:
+    """Read the time a run starts and finishes, in UTC.
+
+    :return: The current time.
+    """
+    return datetime.now(UTC)
+
+
+def _record(writer: RunWriter, run: Run) -> Recorded:
+    """Record a completed run in the store.
+
+    :param writer: The store's writer.
+    :param run: The run.
+    :return: What was recorded.
+    """
+    return writer.record(run)
+
+
+def _ledger_status(options: RunOptions, writer: RunWriter, run: Run) -> LedgerStatus:
+    """Record a run, print the outcome, and say it for the report.
+
+    A failure is never silent: it is printed here and stated in the report.
+
+    :param options: The shared options.
+    :param writer: The store's writer.
+    :param run: The run.
+    :return: Whether the run was recorded, with the tip or the reason.
+    """
+    try:
+        recorded = _record(writer, run)
+    except StoreAnchorError as exc:
+        print(f"cernis {options.command}: {exc}", file=sys.stderr)
+        return LedgerStatus(
+            recorded=True, tip=exc.tip, reason=f"the anchor could not be written: {exc}"
+        )
+    except StoreError as exc:
+        print(f"cernis {options.command}: run {run.id} was not recorded: {exc}", file=sys.stderr)
+        return LedgerStatus(recorded=False, reason=str(exc))
+    before = recorded.checked_before
+    if before.status is VerificationStatus.NOT_DETERMINABLE:
+        print(
+            f"cernis {options.command}: before this run, the ledger was not determinable: "
+            f"{before.note}",
+            file=sys.stderr,
+        )
+    print(
+        f"cernis {options.command}: recorded run {run.id} in {options.store}: tip {recorded.tip}",
+        file=sys.stderr,
+    )
+    return LedgerStatus(recorded=True, tip=recorded.tip, checked_before=before.status)
+
+
 def _audit_and_write(
     options: RunOptions,
     fetches: RunFetches,
+    writer: RunWriter,
     targets: Sequence[Target],
     pairs: Sequence[PairTarget],
     prefixes: Sequence[SitePrefix],
@@ -538,12 +718,16 @@ def _audit_and_write(
 
     :param options: The shared options.
     :param fetches: The run's fetches.
+    :param writer: The store's writer; the run is recorded before the report
+        is written, and the report says whether it was.
     :param targets: Single pages.
     :param pairs: Original and copy pairs.
     :param prefixes: Prefix rules.
     :param sources: Where the URLs came from.
-    :return: The exit code: 0 when the audit ran (whatever it found), 2 when
-        there is nothing to audit or the report cannot be written.
+    :return: The exit code: 0 when the audit ran (whatever it found) and was
+        recorded, 1 when it ran but could not be recorded (or was recorded
+        and its anchor could not be written), 2 when there is nothing to
+        audit or the report cannot be written.
     """
     if not targets and not pairs:
         print(f"cernis {options.command}: nothing to audit", file=sys.stderr)
@@ -551,16 +735,21 @@ def _audit_and_write(
     run = audit(
         targets,
         fetches.fetcher,
-        now=lambda: datetime.now(UTC),
+        now=lambda: _run_clock(),
         prefixes=prefixes,
         pairs=pairs,
         limits=options.limits,
         fetches=fetches,
         sources=sources,
     )
-    return _write(
-        options, report_json(run) if options.output_format == "json" else report_markdown(run)
+    status = _ledger_status(options, writer, run)
+    report = (
+        report_json(run, ledger=status)
+        if options.output_format == "json"
+        else report_markdown(run, ledger=status)
     )
+    written = _write(options, report)
+    return written or (0 if status.recorded and status.reason is None else 1)
 
 
 def _run_and_write(
@@ -579,7 +768,10 @@ def _run_and_write(
         page URL cannot be fetched at all.
     """
     return _with_fetches(
-        options, lambda fetches: _audit_and_write(options, fetches, targets, pairs, prefixes)
+        options,
+        lambda fetches, writer: _audit_and_write(
+            options, fetches, writer, targets, pairs, prefixes
+        ),
     )
 
 
@@ -709,7 +901,7 @@ def run_audit(
         return 2
     site = SiteType(site_type) if site_type is not None else None
 
-    def work(fetches: RunFetches) -> int:
+    def work(fetches: RunFetches, writer: RunWriter) -> int:
         sources: list[RunSource] = []
         listed: Sequence[str] = urls
         if source.from_sitemap is not None or source.from_dev_user is not None:
@@ -729,9 +921,9 @@ def run_audit(
             sources.append(listing.source)
             listed = listing.source.listed
         targets = [Target(url=url, site=_site_for(url, site, loaded)) for url in listed]
-        return _audit_and_write(options, fetches, targets, (), loaded.sites, sources)
+        return _audit_and_write(options, fetches, writer, targets, (), loaded.sites, sources)
 
-    return _with_fetches(options, work)
+    return _with_fetches(options, work, records=not source.list_only)
 
 
 def run_pair(
@@ -800,7 +992,7 @@ def run_pairs(
     if source.from_dev_user is not None:
         username = source.from_dev_user
 
-        def work(fetches: RunFetches) -> int:
+        def work(fetches: RunFetches, writer: RunWriter) -> int:
             listing = from_dev_user(fetches, username, limit=source.limit)
             if source.list_only:
                 return _show_listing(options, listing, fetches, pairs_only=True)
@@ -814,9 +1006,11 @@ def run_pairs(
                 for article in listing.articles
                 if article.original is not None
             ]
-            return _audit_and_write(options, fetches, (), pairs, loaded.sites, [listing.source])
+            return _audit_and_write(
+                options, fetches, writer, (), pairs, loaded.sites, [listing.source]
+            )
 
-        return _with_fetches(options, work)
+        return _with_fetches(options, work, records=not source.list_only)
     if not loaded.pairs:
         print(f"cernis pairs: {pair_map} has no [[pair]]", file=sys.stderr)
         return 2
@@ -834,6 +1028,125 @@ def run_pairs(
         for p in loaded.pairs
     ]
     return _run_and_write(options, (), pairs, loaded.sites)
+
+
+def _read_store(command: str, store: Path) -> list[StoredEntry] | None:
+    """Verify the store against its anchor and read its entries back.
+
+    :param command: The command name, for messages.
+    :param store: The store directory.
+    :return: Every entry, verified, or ``None`` when the store failed
+        verification or could not be read (the reason is printed, and none
+        of what was read is used).
+    """
+    ledger = LedgerStore(store)
+    try:
+        verification = ledger.verify()
+        if verification.status is VerificationStatus.FAILED:
+            failure = StoreIntegrityError(
+                verification.failure_sequence,
+                verification.failure_reason or "FAILED",
+                f"reading {ledger.ledger_path}",
+            )
+            print(f"cernis {command}: {failure}", file=sys.stderr)
+            return None
+        if verification.status is VerificationStatus.NOT_DETERMINABLE:
+            print(f"cernis {command}: not determinable: {verification.note}", file=sys.stderr)
+        return ledger.entries()
+    except StoreError as exc:
+        print(f"cernis {command}: {exc}", file=sys.stderr)
+        return None
+
+
+def run_runs(store: Path, output_format: str) -> int:
+    """List the runs in the store.
+
+    :param store: The store directory.
+    :param output_format: ``md`` or ``json``.
+    :return: 0, or 1 when the store failed verification or could not be read.
+    """
+    entries = _read_store("runs", store)
+    if entries is None:
+        return 1
+    render = format_runs_json if output_format == "json" else format_runs_markdown
+    sys.stdout.write(render(stored_runs(entries), str(store)))
+    return 0
+
+
+def run_history_command(url: str, store: Path, output_format: str) -> int:
+    """List every stored run that audited a URL, with its findings for it.
+
+    :param url: The URL.
+    :param store: The store directory.
+    :param output_format: ``md`` or ``json``.
+    :return: 0, or 1 when the store failed verification or could not be read.
+    """
+    entries = _read_store("history", store)
+    if entries is None:
+        return 1
+    history = run_history(entries, url)
+    render = format_history_json if output_format == "json" else format_history_markdown
+    sys.stdout.write(render(url, history, str(store)))
+    return 0
+
+
+def format_verification(verification: Verification, store: Path, gaps: Sequence[str] = ()) -> str:
+    """Render ``cernis store verify``.
+
+    :param verification: What verification found.
+    :param store: The store directory.
+    :param gaps: One sentence per stored run that started with no usable anchor.
+    :return: The text, with a trailing newline.
+    """
+    ledger = LedgerStore(store)
+    lines = [
+        f"Store: {store}",
+        f"Ledger: {ledger.ledger_path}",
+        f"Entries checked: {verification.entries_checked}",
+        f"Tip: {verification.tip if verification.tip is not None else 'none'}",
+        f"Anchor: {verification.anchor if verification.anchor is not None else 'none'}",
+    ]
+    if verification.status is VerificationStatus.VERIFIED:
+        lines.append("Result: VERIFIED")
+    elif verification.status is VerificationStatus.FAILED:
+        lines.append(
+            f"Result: FAILED: {verification.failure_reason} at sequence "
+            f"{verification.failure_sequence}"
+        )
+    else:
+        lines.append(f"Result: NOT DETERMINABLE: {verification.note}")
+    lines.append(f"Note: {verification.note}")
+    lines += [f"Anchor gap: {gap[0].lower()}{gap[1:]}" for gap in gaps]
+    return "\n".join(lines) + "\n"
+
+
+def run_store_verify(store: Path, expected: StoreTip | None) -> int:
+    """Verify the whole ledger against its anchor, or an expected tip.
+
+    :param store: The store directory.
+    :param expected: A tip kept elsewhere, or ``None`` for the anchor file.
+    :return: 0 when verified, 1 when verification fails or the store cannot
+        be read, 3 when it is not determinable.
+    """
+    ledger = LedgerStore(store)
+    gaps: list[str] = []
+    try:
+        verification = ledger.verify(expected)
+        if verification.status is not VerificationStatus.FAILED:
+            gaps = [
+                anchor_gap(run)
+                for run in stored_runs(ledger.entries())
+                if run.anchor_status in ANCHOR_GAPS
+            ]
+    except StoreError as exc:
+        print(f"cernis store verify: {exc}", file=sys.stderr)
+        return 1
+    sys.stdout.write(format_verification(verification, store, gaps))
+    return {
+        VerificationStatus.VERIFIED: 0,
+        VerificationStatus.FAILED: 1,
+        VerificationStatus.NOT_DETERMINABLE: 3,
+    }[verification.status]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -864,6 +1177,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 sitemap_documents=args.max_sitemap_documents,
             ),
+            store=args.store,
         )
         if args.command == "pair":
             return run_pair(
@@ -881,5 +1195,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_pairs(args.map, options, source)
     if args.command == "fetch":
         return run_fetch(args.url, args.cache_dir, args.format, args.allow_loopback)
+    if args.command == "runs":
+        return run_runs(args.store, args.format)
+    if args.command == "history":
+        return run_history_command(args.url, args.store, args.format)
+    if args.command == "store":
+        if args.store_command == "verify":
+            return run_store_verify(args.store, args.expected_tip)
+        build_parser().parse_args(["store", "--help"])
     print(STATUS_MESSAGE)
     return 0

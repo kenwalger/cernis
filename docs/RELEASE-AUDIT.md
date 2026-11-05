@@ -20,7 +20,7 @@ The session records' own lists are not rewritten; this file supersedes them as t
 ## 1b. Session 6a
 
 32. **The bare `cernis` message** now describes what Cernis does and points to `cernis --help`; check it against what is published. *SESSION-06a #1*
-33. **The store, when it is built**: Session 6a stopped before building it (C-5, `docs/SDK-FRICTION.md` 2026-11-04). Whatever the Owner decides, review then: single-writer locking, that a failed run is never appended, canonical JSON and its schema version, no page bodies in the store, and tamper detection (an edited, a deleted, and a truncated entry). *SESSION-06a #2*
+33. **The receipt store** (built in Session 6b on sovereign-sdk-ledger 2.0.0, DESIGN.md section 5): single-writer locking on Windows and POSIX, that a failed or invalid run is never appended, a run cut short and completed by a retry, the idempotency keys and the same-second run id refusal, canonical JSON and its schema version, no page bodies in the store, the tip anchor and its atomic write, tamper detection (an edited, a deleted, and a truncated entry), the not-determinable cases, and the Cernis-owned type stub. *SESSION-06a #2, SESSION-06b*
 
 ## 2. Untrusted input Cernis parses
 

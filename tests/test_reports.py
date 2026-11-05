@@ -62,7 +62,7 @@ def golden_run(tmp_path: Path) -> Run:
         Target(url=WORDPRESS_PAGE, site=SiteType.WORDPRESS),
         Target(url=GONE, site=SiteType.WORDPRESS),
     ]
-    return audit(targets, fetcher, now=fixed_clock())  # type: ignore[arg-type]
+    return audit(targets, fetcher, now=fixed_clock(), run_suffix=lambda: "0a1b2c")  # type: ignore[arg-type]
 
 
 def check_golden(name: str, text: str) -> None:

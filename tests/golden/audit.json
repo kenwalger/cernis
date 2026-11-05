@@ -2,7 +2,7 @@
   "format": "cernis-report",
   "format_version": 1,
   "run": {
-    "id": "20261030T120000Z",
+    "id": "20261030T120000Z-0a1b2c",
     "started_at": "2026-10-30T12:00:00+00:00",
     "finished_at": "2026-10-30T12:00:01+00:00",
     "cernis_version": "0.1.0.dev0"

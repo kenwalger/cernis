@@ -4,7 +4,11 @@ The report is one JSON object:
 
 - ``format`` (``"cernis-report"``) and ``format_version`` (:data:`FORMAT_VERSION`);
 - ``run``: ``id``, ``started_at``, ``finished_at`` (ISO 8601, UTC), and
-  ``cernis_version``;
+  ``cernis_version``; and, when the run went to the receipt store
+  (Session 6b), ``ledger``: ``status`` (``recorded`` or ``not_recorded``),
+  ``tip`` (``sequence`` and ``entry_hash``, when recorded), ``reason`` (why
+  not, when not), and ``checked_before`` (what verifying the ledger found
+  before writing: ``VERIFIED`` or ``NOT_DETERMINABLE``);
 - ``checks``: the ``id`` and ``version`` of every check with a finding in the
   run, in registry order;
 - ``subjects``: the audited URLs;
@@ -30,9 +34,14 @@ not.
 """
 
 import json
+from typing import TYPE_CHECKING
 
 from cernis.checks.registry import CHECKS, SITE_LEVEL
 from cernis.model import Actor, Evidence, Finding, Receipt, Run, Snapshot, Status
+
+if TYPE_CHECKING:
+    # The store imports this module's serializers; the status is only read here.
+    from cernis.store.base import LedgerStatus
 
 FORMAT = "cernis-report"
 """The report format's name."""
@@ -165,21 +174,41 @@ def checks_in(run: Run) -> list[tuple[str, str]]:
     ]
 
 
-def report_json(run: Run) -> str:
+def ledger_as_dict(ledger: "LedgerStatus") -> dict[str, object]:
+    """Represent whether a run was recorded as JSON-ready data.
+
+    :param ledger: The run's ledger status.
+    :return: Its status, tip, reason, and what the check before writing found.
+    """
+    tip = ledger.tip
+    return {
+        "status": "recorded" if ledger.recorded else "not_recorded",
+        "tip": None if tip is None else {"sequence": tip.sequence, "entry_hash": tip.entry_hash},
+        "reason": ledger.reason,
+        "checked_before": None if ledger.checked_before is None else ledger.checked_before.value,
+    }
+
+
+def report_json(run: Run, ledger: "LedgerStatus | None" = None) -> str:
     """Render a run as the JSON report.
 
     :param run: The run.
+    :param ledger: Whether the run went to the receipt store, or ``None``
+        when there is no store (the field is then left out).
     :return: The report, indented, with a trailing newline.
     """
+    metadata: dict[str, object] = {
+        "id": run.id,
+        "started_at": run.started_at.isoformat(),
+        "finished_at": run.finished_at.isoformat(),
+        "cernis_version": run.cernis_version,
+    }
+    if ledger is not None:
+        metadata["ledger"] = ledger_as_dict(ledger)
     payload = {
         "format": FORMAT,
         "format_version": FORMAT_VERSION,
-        "run": {
-            "id": run.id,
-            "started_at": run.started_at.isoformat(),
-            "finished_at": run.finished_at.isoformat(),
-            "cernis_version": run.cernis_version,
-        },
+        "run": metadata,
         "checks": [{"id": cid, "version": version} for cid, version in checks_in(run)],
         "subjects": list(run.subjects),
         "pairs": [{"original": pair.original, "copy": pair.copy} for pair in run.pairs],

@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.10 (2026-11-04). Draft 2.10 records Session 6a: a time budget for a whole fetch (finding D33), and the finding that sovereign-sdk-ledger 1.3.0 has no public way to read entries back, which stopped the store (section 8, C-5, pending the Owner's decision). Draft 2.9 records Session 5e: the fixes from the tier comparison (`docs/experiments/2026-11-tier-comparison.md`): more refused address ranges and IPv6 translation forms, a bounded DNS lookup, robots.txt read to 500 KiB, and fragments never requested. Draft 2.8 records Session 5d: the results of claims C-1 and C-3 from the first full audit, C-1b proposed, principles 9 and 10, and Phases 2 to 4 marked done. Draft 2.7 recorded Session 5c: the claim numbers fixed in section 8, `wordpress.entry` version 2 (share widgets left out of the article body), a whole-origin `[[site]]` prefix as one sitemap section, site-level findings (`epi.og.image.shared`) and the report's Site section, and the run summary (counts of `AUTHOR` defects per article, for C-1). Draft 2.6 recorded Session 5b: `peri.robots.directives`, `epi.robots.access` with a versioned AI crawler list, `epi.sitemap.listed`, `epi.links.resolve` with its limits, the `LIMIT_REACHED` reason code (ADR-001 amendment 2), the sitemap and DEV user URL sources, `copies` in the pair map, and `cernis pairs --from-dev-user`. Draft 2.5 recorded Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.11 (2026-11-04). Draft 2.11 records Session 6b: C-5 falsified and the gaps fixed in the SDK (sovereign-sdk-ledger 2.0.0), claim C-5b stated with its falsifiers, and the receipt ledger (section 5): what each run appends, the field mapping, idempotency keys, the tip anchor, and what a failed write does. Draft 2.10 records Session 6a: a time budget for a whole fetch (finding D33), and the finding that sovereign-sdk-ledger 1.3.0 has no public way to read entries back, which stopped the store (section 8, C-5, pending the Owner's decision). Draft 2.9 records Session 5e: the fixes from the tier comparison (`docs/experiments/2026-11-tier-comparison.md`): more refused address ranges and IPv6 translation forms, a bounded DNS lookup, robots.txt read to 500 KiB, and fragments never requested. Draft 2.8 records Session 5d: the results of claims C-1 and C-3 from the first full audit, C-1b proposed, principles 9 and 10, and Phases 2 to 4 marked done. Draft 2.7 recorded Session 5c: the claim numbers fixed in section 8, `wordpress.entry` version 2 (share widgets left out of the article body), a whole-origin `[[site]]` prefix as one sitemap section, site-level findings (`epi.og.image.shared`) and the report's Site section, and the run summary (counts of `AUTHOR` defects per article, for C-1). Draft 2.6 recorded Session 5b: `peri.robots.directives`, `epi.robots.access` with a versioned AI crawler list, `epi.sitemap.listed`, `epi.links.resolve` with its limits, the `LIMIT_REACHED` reason code (ADR-001 amendment 2), the sitemap and DEV user URL sources, `copies` in the pair map, and `cernis pairs --from-dev-user`. Draft 2.5 recorded Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -248,6 +248,79 @@ A finding change is attributed to the page change of the same run pair, so a rep
 
 `UNCLASSIFIED` is the change-tracking equivalent of *non liquet*, and it is a legitimate answer. When the checker changed between runs, Cernis says so first, because otherwise a new check looks like a new problem with the page.
 
+### The receipt ledger (Session 6b)
+
+Every completed run is appended to a ledger in the store directory (`.cernis/store/` by default, git-ignored; `--store` changes it), on sovereign-sdk-ledger 2.0.0 behind the `ReceiptStore` protocol (ADR-002, `src/cernis/store/`). Cernis uses only the ledger's public API (claim C-5b). An in-memory store implements the same protocol for tests.
+
+**What a run appends.**
+
+- One entry per receipt, snapshot, and finding, then one entry for the run record. The run record comes last and marks the run complete.
+- A reader ignores the entries of a run with no run record (a write that stopped partway); a retry completes it.
+- Raw page bodies are never stored in the ledger; they stay in the git-ignored cache.
+- A run that failed or is invalid never reaches the store, because a `Run` that breaks a rule cannot be built.
+
+**The content of an entry** (`sieved_content`) is canonical JSON: sorted keys, no insignificant whitespace, UTF-8 with non-ASCII characters kept as they are. It is one object:
+
+| Field | Value |
+|---|---|
+| `cernis_entry` | The entry schema version, `1`. Bumped when a field is removed or renamed, or a value's meaning changes. |
+| `kind` | `receipt`, `snapshot`, `finding`, or `run` |
+| `run_id` | The run's id |
+| `record` | The record, with the same fields as the JSON report (a receipt, a snapshot, or a finding with its `key`). For `run`: the run's `id`, `started_at`, `finished_at`, `cernis_version`, `subjects`, `pairs`, `sources`, `counts` (findings per status), `anchor_status`, and `entries` (how many of each kind come before it). `anchor_status` is what the check before the run found about the store's anchor: `verified`, `missing` (no anchor file beside a non-empty ledger), `unreadable`, `behind` (entries followed the anchored tip that no anchor covered), or `empty` (nothing recorded yet) |
+
+**The ledger's fields**, as Cernis fills them for `append_entry`:
+
+| Ledger field | Cernis's value |
+|---|---|
+| `payload_hash` | SHA-256 of the entry's content (the canonical JSON above, as UTF-8), in lowercase hex: the hash of what is stored, as the SDK intends |
+| `timestamp` | The run's `finished_at`, ISO 8601 in UTC, the same for every entry of a run |
+| `signature` | Absent, so the entry is `UNSIGNED` (decision 2 below) |
+| `signer_key_id` | Not passed |
+| `idempotency_key` | See below |
+| `sieved_content` | The entry's content |
+
+**Idempotency keys identify the event, not the content.**
+
+- The key is `cernis/<run id>/<kind>/<local id>`. The local id is:
+  - a receipt's id (`r-001`);
+  - for a snapshot, the id of the receipt it was taken of;
+  - a finding's id (`f-001`);
+  - `run`, for the run record.
+- Retrying the write of one run gives the same keys, so nothing is recorded twice. A later run that observes identical content has a different run id, so it is recorded again, as a new observation. A content hash would do the opposite of both.
+- Before appending, Cernis reads the run's keys already in the ledger:
+  - A key present with the same `payload_hash` is already recorded, and is skipped (logged at debug level).
+  - A key present with a different `payload_hash` means another run reused the run id. The whole run is refused before anything is appended, with an error naming the key.
+  - A run record already present means the run is complete; it is not compared again, since its `anchor_status` is the first write's, and a retry made after that write anchored the store would see `verified`. Every other entry must then be recorded already, with the same content: nothing is ever added under a completed run's id.
+  - A write that fails partway leaves the entries already written in the chain, with no run record, so readers ignore them and the report says the run was not recorded. Recording the same `Run` again completes it (the store's API); a new command makes a new run, with a new id, so the orphaned entries stay as a record of the failed attempt.
+- **Run ids are unique within a second.** A run id is the start time to the second, a hyphen, and six random hex digits (`20261104T234017Z-a1b2c3`), so two runs that start in the same second get different ids and keys.
+- An `IdempotencyKeyConflictError` during an append is treated as already recorded.
+
+**Decisions:**
+
+1. **The tip anchor lives next to the ledger**, in `<ledger file>.tip.json`, with the sequence number, the entry hash, and the UTC time it was written.
+   - It is written after each run's appends, atomically (a temporary file, then `os.replace`), and the same tip goes in the run's report.
+   - Reason: the ledger alone cannot reveal that its last entries were removed; only a tip kept outside it can. Next to the ledger is where every Cernis command can find it without configuration.
+   - Limit: an anchor beside the file protects against an accidental or careless truncation, not against someone who can rewrite both files. The tip is also in every report, which covers that case when a report is kept elsewhere.
+2. **Entries are unsigned for now.** Cernis passes no signature and never fakes one, so the ledger records each entry as `UNSIGNED`, a marker that is part of the hashed entry. Reason: Cernis has no signing key or identity yet, and an empty or placeholder signature would claim something untrue. Signing with sovereign-core is a possible future claim, C-5c (section 8).
+
+**Verification.**
+
+- Before a run is appended, and in `cernis store verify`, the ledger is verified against the anchor (`verify_ledger(expected_tip=...)`).
+- A failure is reported plainly, with the SDK's reason code (`BROKEN_LINK`, `SEQUENCE_GAP`, `UNSUPPORTED_FORMAT_VERSION`, `MALFORMED_ENTRY`, or `TIP_MISMATCH`) and its sequence number. It is a finding about the ledger, and the ledger is never repaired. A ledger that fails verification takes no new entries.
+- A non-empty ledger with no anchor file is **not determinable**, since there is nothing to check its tail against. It is reported so, never as passing.
+- **Entries after the anchor file's tip are not determinable either.** Cernis rewrites the anchor after every run, so entries beyond it were written by something else, or by a run whose anchor write failed. A tip given with `--expected-tip` is an earlier anchor kept elsewhere, so later entries are expected there.
+- **A run that starts that way is still recorded**, and its run record keeps `anchor_status: missing` (or `unreadable`, or `behind`). The new anchor written after the run lets later verifies pass, so the gap must be in the chain itself, not only in one report: `cernis runs` and `cernis store verify` show it for every such run.
+- **Recovery from a failed verification is deliberate, not automatic.** A ledger that fails verification takes no new entries, and Cernis offers no command that re-anchors it, since accepting a broken ledger is a decision. Move the store directory aside (it is the evidence), and the next run starts a new store. The ledger commits with SQLite `synchronous = NORMAL` (the SDK's setting), so after a power loss the last transactions can be lost while the fsynced anchor names them; that shows as `TIP_MISMATCH` and is handled the same way.
+- Reading back (`cernis runs`, `cernis history`) uses `iter_entries()` with verification on. A read that raises `LedgerIntegrityError` reports the sequence number and the reason, and uses none of the data it read.
+
+**A failed write is never silent.**
+
+- Every ledger error, from any ledger call, is turned into a store error, so a failure is reported, never a traceback that loses the report.
+- If the run is appended but its anchor cannot be written, the report says `Ledger: recorded, tip ...; but the anchor could not be written`, and the command exits 1.
+- `--list-only` records nothing, so it opens no store.
+- If the run cannot be appended (the ledger fails verification, refuses the run, or a write fails), the report still goes out. Its header says the run was **not recorded**, and why. The reason is printed, and the command exits with status 1.
+- One writer at a time: an auditing command takes the store's lock before it fetches anything. A second writer is refused at once, with a clear error, instead of fetching and then failing to record.
+
 ---
 
 ## 6. Architecture
@@ -416,6 +489,7 @@ Written before building, in the Afterword style. The numbers were fixed on 2026-
 | C-3 | Observed defects are real | On my own review of every defect from the first full audit, fewer than 95% (fixed 2026-11-02) are genuine |
 | C-4 | The three statuses are used honestly | Any `RECOMMENDATION` lacks a `based_on` link, or any recommendation text fails the no-promise test (a hard rule; zero tolerance) |
 | C-5 | sovereign-ledger works as a store for a real consumer without changes to its public API | Cernis needs a ledger API change to function (any friction short of that is logged, not a falsification) |
+| C-5b | Cernis can use `sovereign-sdk-ledger` 2.0.0 for its receipt ledger using only the package's public API (stated 2026-11-04, before the store was built) | Cernis imports any underscore-prefixed name from `sovereign_ledger`; or Cernis opens the ledger's SQLite file directly, for any purpose; or completing Session 6a requires another SDK change |
 
 C-3 is the important one. A tool that claims to report only observed defects has to show that its observed defects are actually defects.
 
@@ -429,13 +503,18 @@ The first full audit is run `20261102T204509Z` (Session 5c): `cernis pairs --fro
 | C-2 | Not yet tested | Phase 5 tests it: history, finding keys across runs, and change classification, with 5 back-to-back runs. |
 | C-3 | **Holds, weakly** | 21 of 21 defects are genuine on the Owner's review. All 21 are one type: `peri.og.url_matches_canonical` on DEV copies, where DEV sets `og:url` (`PLATFORM`). A run with more varied defects is needed before this means much. |
 | C-4 | Not yet tested as a claim | Enforced at every run by `Run` validation (`based_on` must name an `OBSERVED` finding) and by the no-promise test on every template; Phase 6 evaluates it over the full audit's findings. |
-| C-5 | Not yet tested | Phase 5 tests it, when sovereign-ledger becomes the receipt store behind `ReceiptStore`. |
+| C-5 | **Falsified** (2026-11-04, Session 6a) | The public API of sovereign-sdk-ledger 1.3.0 was `append_receipt`, `verify_ledger_integrity` (a boolean only), and `close`. There was no way to read an entry back; `payload_hash` was `UNIQUE`, so identical content was refused; and the only way to write an unsigned entry was an empty-string signature. A store that can be written but not read cannot serve history (section 5), so Cernis could not function without an API change. Outcome: the gaps were fixed in the SDK, not worked around in Cernis, and released as sovereign-sdk-ledger 2.0.0 (`docs/SDK-FRICTION.md`, 2026-11-04). |
+| C-5b | **Holds** (2026-11-04, Session 6b) | Every Session 6a item was built on 2.0.0 with no SDK change. Cernis imports only names in `sovereign_ledger.__all__` and never calls `sqlite3.connect` (two tests scan `src/cernis` for both). The package ships no `py.typed`, so Cernis types it with its own stub of the public names; that is type information, not an import of private code. The friction found is logged (`docs/SDK-FRICTION.md`, 2026-11-04, Session 6b). |
 
 ### Proposed
 
 | ID | Claim | Falsified if |
 | --- | --- | --- |
 | C-1b | Deterministic checks find at least one author-actionable defect on a meaningful share of other developer-writers' published cross-posts | Fewer than 10% (*proposed*) of audited articles have any `AUTHOR` defect |
+
+| C-5c | Cernis can sign its ledger entries with sovereign-core keys and verify them later, using only the SDK's public API | *To be written before signing is built* |
+
+C-5c is a possible future claim. Cernis's entries are unsigned for now (section 5, "The receipt ledger", decision 2), so nothing tests it yet.
 
 C-1b is **proposed, not fixed**. Its sample size, the rule that selects its authors and articles, and its threshold must be fixed and dated here before any run. Its runs follow principle 9: a small, polite sample of public cross-posts, robots.txt respected, normal pacing.
 
@@ -463,7 +542,7 @@ Each phase is one or more numbered Claude Code sessions, with the usual CLAUDE.m
 | 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Done in Session 3. Session 3b adds the SSRF guard, the RFC 9309 matcher, and the overall request deadline. |
 | 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | Done in Sessions 4a (parser, snapshots, URL comparison, sovereign-sieve evaluated), 4b (peritext checks, run, reports, `cernis audit`), and 4d (prefix site types, standards defects). |
 | 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | Done in Sessions 5a, 5b, and 5c: `cernis pairs` ran over the 21 most recent cross-posted articles in Session 5c. Session 5a adds the pair check, canonical and og:image resolution, `owned`, `cernis pair`, and `cernis pairs`. Session 5b adds robots access and directives, sitemaps, links, the sitemap and DEV user sources, `copies`, and `cernis pairs --from-dev-user`. |
-| 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass |
+| 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass. Session 6a added the whole-fetch budget and stopped at the store (C-5); Session 6b built the ledger store, `cernis runs`, `cernis history`, and `cernis store verify` on sovereign-sdk-ledger 2.0.0 (C-5b holds). The diff and change classification remain. |
 | 6 | Fix the *proposed* numbers, run the first full audit, review every defect, evaluate C-1 to C-5 | An evaluation note, and material for an article. Session 5c fixed the numbers (section 8) and ran the first site-wide audit; Session 5d records the results of C-1 (falsified) and C-3 (holds, weakly). C-2, C-4, and C-5 remain. |
 
 A natural first article: *Non Liquet: Building an Auditor That Admits What It Can't See.*

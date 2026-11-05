@@ -11,6 +11,7 @@ fetch.
 import ipaddress
 import socket
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -105,3 +106,18 @@ def network_guard(monkeypatch: pytest.MonkeyPatch) -> Iterator[NetworkGuard]:
     yield guard
     if guard.blocked:
         pytest.fail(f"test tried to reach the network: {', '.join(guard.blocked)}")
+
+
+@pytest.fixture(autouse=True)
+def isolated_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """Point the CLI's default store at a fresh directory, so no test writes to the repository.
+
+    :param monkeypatch: Used to replace the CLI's default store directory.
+    :param tmp_path_factory: Makes the directory.
+    :return: The store directory the CLI uses by default in this test.
+    """
+    directory = tmp_path_factory.mktemp("store") / "store"
+    monkeypatch.setattr("cernis.cli.DEFAULT_STORE_DIR", directory)
+    return directory

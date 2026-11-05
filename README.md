@@ -32,8 +32,8 @@ evidence. No scores, no grades, no predicted outcomes.
 ## Status
 
 **Pre-release, under active development.** Single-page audits, the
-cross-post pair check, robots.txt access for AI crawlers, sitemaps, and broken
-links work today. The version on PyPI (0.0.1) only reserves the
+cross-post pair check, robots.txt access for AI crawlers, sitemaps, broken
+links, and a tamper-evident store of every run work today. The version on PyPI (0.0.1) only reserves the
 name, so install from source for now. Expect commands and report formats to
 change before 0.1.0.
 
@@ -115,6 +115,17 @@ Other useful commands:
 uv run cernis audit <url> --format json --output report.json   # machine-readable report
 uv run cernis checks                                            # list every check and its version
 uv run cernis fetch <url>                                       # fetch only, and print the receipts
+```
+
+Every audit is recorded in a tamper-evident receipt store, a hash-chained
+ledger in `.cernis/store/` (git-ignored; `--store` changes it). After each run
+Cernis prints the ledger's tip, and the report's header records it. Page
+bodies are never stored there; they stay in the cache.
+
+```bash
+uv run cernis runs                      # every stored run: id, times, subjects, counts
+uv run cernis history <url>             # every stored run that audited the URL, its findings by key
+uv run cernis store verify              # check the whole chain against the anchored tip
 ```
 
 ## What it checks today

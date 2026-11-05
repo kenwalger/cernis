@@ -304,3 +304,6 @@ docs/reference/*
 .cernis-cache/
 # Real audit reports (Session 5c onward); kept locally, never committed
 reports/
+
+# The receipt store (Session 6b).
+.cernis/

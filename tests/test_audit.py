@@ -1,6 +1,7 @@
 """Tests for run assembly: fetch outcomes as findings, snapshots, and a run that validates."""
 
 import dataclasses
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from fetch_support import FakeResolver, Site, make_fetcher, redirect, respond
 from parse_support import fixture
 
 import cernis.audit as audit_module
-from cernis.audit import Target, audit, run_id_for
+from cernis.audit import Target, audit, new_run_suffix, run_id_for
 from cernis.checks.outcomes import QUESTIONS
 from cernis.model import (
     ErrorKind,
@@ -77,7 +78,7 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
         now=Clock(),
     )
 
-    assert run.id == "20261030T120000Z"
+    assert re.fullmatch(r"20261030T120000Z-[0-9a-f]{6}", run.id)
     assert run.finished_at > run.started_at
     assert run.subjects == (PAGE,)
     # The page, then its second canonical (its first is the page itself, so
@@ -106,9 +107,32 @@ def test_a_page_read_whole_is_checked_snapshotted_and_validated(tmp_path: Path) 
     assert next(f for f in run.findings if f.id == based).check_id == "peri.canonical.single"
 
 
-def test_run_ids_name_the_start_in_utc() -> None:
-    """DESIGN.md section 7: Run: 20261117T180000Z."""
-    assert run_id_for(datetime(2026, 11, 17, 18, 0, tzinfo=UTC)) == "20261117T180000Z"
+def test_run_ids_name_the_start_in_utc_and_a_suffix() -> None:
+    """DESIGN.md section 7: Run: 20261117T180000Z-a1b2c3."""
+    started = datetime(2026, 11, 17, 18, 0, tzinfo=UTC)
+    assert run_id_for(started, "a1b2c3") == "20261117T180000Z-a1b2c3"
+
+
+def test_run_suffixes_are_short_random_hex() -> None:
+    """Six hex digits, fresh each time, so runs in one second still differ."""
+    suffixes = {new_run_suffix() for _ in range(50)}
+
+    assert len(suffixes) == 50
+    assert all(re.fullmatch(r"[0-9a-f]{6}", suffix) for suffix in suffixes)
+
+
+def test_two_runs_started_in_the_same_second_get_different_ids(tmp_path: Path) -> None:
+    """A frozen clock no longer makes two runs share an id."""
+    site = Site()
+    site.add(PAGE, respond(404))
+    fetcher = make_fetcher(site, tmp_path)
+    frozen = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
+
+    first = audit([Target(url=PAGE)], fetcher, now=lambda: frozen)
+    second = audit([Target(url=PAGE)], fetcher, now=lambda: frozen)
+
+    assert first.id != second.id
+    assert first.id[:16] == second.id[:16] == "20261030T120000Z"
 
 
 def _not_determinable(run: object) -> list[Finding]:

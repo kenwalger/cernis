@@ -678,7 +678,7 @@ class Run:
     - every pair names two different subjects of the run, and no pair repeats;
     - every source's receipts are in the run.
 
-    :param id: The run id, such as ``20261030T120000Z``.
+    :param id: The run id, such as ``20261030T120000Z-a1b2c3``.
     :param started_at: When the run started, in UTC.
     :param finished_at: When it finished, in UTC, not before ``started_at``.
     :param cernis_version: The Cernis version that ran it.

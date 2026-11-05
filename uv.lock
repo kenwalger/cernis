@@ -92,6 +92,7 @@ dependencies = [
     { name = "httpx" },
     { name = "idna" },
     { name = "selectolax" },
+    { name = "sovereign-sdk-ledger" },
 ]
 
 [package.dev-dependencies]
@@ -108,6 +109,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "idna", specifier = ">=3.10" },
     { name = "selectolax", specifier = ">=1.0.2" },
+    { name = "sovereign-sdk-ledger", specifier = ">=2.0.0,<3.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -523,6 +525,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/cc/a96a6d775526c957ef8b3716c4505c250648906fe663077bc2ddb6427d73/selectolax-1.0.2-cp315-cp315t-win32.whl", hash = "sha256:fcd3a49df7f8761b6a3a82076fe2e4f0d53a5dac63ba2da895aab2b586c78243", size = 1270501, upload-time = "2026-10-22T15:44:56.871Z" },
     { url = "https://files.pythonhosted.org/packages/f1/78/ee70e73103ef7a827982b43bcc009f73718684f919d13bb532b87a4a7312/selectolax-1.0.2-cp315-cp315t-win_amd64.whl", hash = "sha256:ad6b29a2f20c7d46b8306a995268f50c2a63eae40c3c7a05b6a3492d3968117d", size = 1335466, upload-time = "2026-10-22T15:44:58.949Z" },
     { url = "https://files.pythonhosted.org/packages/4c/10/edf323b28d3d3337ba9a43b29e460246109e1ee14cb06ab9e713c9e0c388/selectolax-1.0.2-cp315-cp315t-win_arm64.whl", hash = "sha256:63dbbb0760a2a2b4f581afd186863ef47acecb410df7c937239c51ae853c3cb1", size = 1316364, upload-time = "2026-10-22T15:45:00.415Z" },
+]
+
+[[package]]
+name = "sovereign-sdk-ledger"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/82/705115cc8a6178dc5dd48aaaeb2474072af6c357336c359f26c2d5718c4e/sovereign_sdk_ledger-2.0.0.tar.gz", hash = "sha256:335e143a73dc9caa71151150bc37dd2c628c3d6a4bf1e117cf680069a650be57", size = 42396, upload-time = "2026-11-04T23:05:28.33Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/9a/a26592af98ca3cd9dc3ea7638a84cc9315a1b7b7fa60706c5eb81a46d689/sovereign_sdk_ledger-2.0.0-py3-none-any.whl", hash = "sha256:b2a2235f585aee64fbd19fbfc56c181be654e84756c4fb2c4daa5f4e7d4cc1ad", size = 22844, upload-time = "2026-11-04T23:05:24.628Z" },
 ]
 
 [[package]]

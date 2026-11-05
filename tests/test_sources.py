@@ -231,9 +231,12 @@ def dev_site() -> Site:
 
 
 def test_pairs_from_dev_user_list_only_stops_after_the_listing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    isolated_store: Path,
 ) -> None:
-    """--list-only prints the pairs and the requests, and audits nothing."""
+    """--list-only prints the pairs and the requests, audits nothing, and opens no store."""
     site = dev_site()
     scripted(monkeypatch, site)
 
@@ -247,6 +250,7 @@ def test_pairs_from_dev_user_list_only_stops_after_the_listing(
     assert f"- original {ORIGINAL}; copy https://dev.to/example-author/a-synthetic-post-1a2b" in out
     assert "not cross-posted" in out
     assert ORIGINAL not in site.urls()
+    assert not isolated_store.exists()
 
 
 def test_pairs_from_dev_user_audits_each_cross_post(

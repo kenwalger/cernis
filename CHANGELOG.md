@@ -11,6 +11,19 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 
 ### Added
 
+- The receipt store (Session 6b, DESIGN.md section 5): every completed run is
+  appended to a hash-chained ledger in `.cernis/store/` (`--store` changes
+  it), on sovereign-sdk-ledger 2.0.0, as canonical JSON entries keyed by the
+  event. The tip is printed after each run, recorded in the report header
+  (`Ledger:` in Markdown, `run.ledger` in JSON), and anchored beside the
+  ledger. One writer at a time; a run that cannot be recorded is still
+  reported, says so, and exits with status 1.
+- `cernis runs`, `cernis history <url>`, and `cernis store verify
+  [--expected-tip SEQUENCE:HASH]`.
+- Each run record keeps `anchor_status` (`verified`, `missing`, `unreadable`,
+  `behind`, or `empty`), so a run that started without a usable anchor stays
+  on record in the chain; `cernis runs` and `cernis store verify` show it.
+- Dependency: `sovereign-sdk-ledger>=2.0.0,<3.0.0`, which brings no others.
 - CI (`.github/workflows/ci.yml`): the full check list on Python 3.12, 3.13,
   and 3.14 for every push and pull request.
 - Trusted Publishing to PyPI (`.github/workflows/publish.yml`), bound to the
@@ -151,6 +164,8 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 - `store_body=False` no longer keeps the resource's robots.txt out of the
   cache.
 - A trailing dot in a host no longer escapes pacing.
+- Run ids carry a random suffix (`20261104T234017Z-a1b2c3`), so two runs that
+  start in the same second get different ids.
 - A whole fetch has a time budget (`FetchConfig.fetch_timeout`, 120 s by
   default): every attempt, retry wait, and redirect of the requested URL.
   robots.txt has its own budget and is never charged to the page's.

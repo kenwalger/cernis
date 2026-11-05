@@ -26,6 +26,7 @@ dependencies = [
     "httpx>=0.28.1,<0.29",
     "idna>=3.10",
     "selectolax>=1.0.2",
+    "sovereign-sdk-ledger>=2.0.0,<3.0.0",
 ]
 
 [project.urls]
@@ -60,6 +61,8 @@ ignore = ["D107", "D203", "D213"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D100", "D104"]
+# Type stubs carry no docstrings.
+"typings/**" = ["D"]
 # Hand-written expected findings read best as one row per finding.
 "tests/test_checks_peritext.py" = ["E501"]
 
@@ -67,6 +70,8 @@ ignore = ["D107", "D203", "D213"]
 strict = true
 python_version = "3.12"
 files = ["src", "tests"]
+# A stub for sovereign-sdk-ledger's public API, which ships no py.typed marker.
+mypy_path = "typings"
 
 [tool.pydoclint]
 style = "sphinx"

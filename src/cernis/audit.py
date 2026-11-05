@@ -31,6 +31,7 @@ a bug in Cernis, so the error propagates; it is never caught and emitted.
 """
 
 import itertools
+import secrets
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -75,6 +76,7 @@ __all__ = [
     "RunFetches",
     "Target",
     "audit",
+    "new_run_suffix",
     "peritext_findings",
     "run_id_for",
 ]
@@ -127,13 +129,24 @@ class PairTarget:
     copy: Target
 
 
-def run_id_for(started_at: datetime) -> str:
-    """Name a run after the moment it started (DESIGN.md section 7).
+def new_run_suffix() -> str:
+    """Make a short random suffix for a run id.
+
+    :return: Six lowercase hex digits, from :mod:`secrets`.
+    """
+    return secrets.token_hex(3)
+
+
+def run_id_for(started_at: datetime, suffix: str) -> str:
+    """Name a run after the moment it started, and a suffix (DESIGN.md section 7).
+
+    The suffix keeps two runs that start in the same second apart.
 
     :param started_at: When the run started, in UTC.
-    :return: The id, such as ``20261030T120000Z``.
+    :param suffix: The run's suffix, such as six random hex digits.
+    :return: The id, such as ``20261030T120000Z-a1b2c3``.
     """
-    return started_at.strftime("%Y%m%dT%H%M%SZ")
+    return f"{started_at:%Y%m%dT%H%M%SZ}-{suffix}"
 
 
 class RunFetches:
@@ -230,6 +243,7 @@ def audit(
     limits: AuditLimits | None = None,
     fetches: RunFetches | None = None,
     sources: Sequence[RunSource] = (),
+    run_suffix: Callable[[], str] = new_run_suffix,
 ) -> Run:
     """Audit pages and pairs, and return the validated run.
 
@@ -250,6 +264,8 @@ def audit(
         requests with ``fetcher`` (their receipts join the run); a new one if
         ``None``.
     :param sources: Where the URLs came from, recorded in the run.
+    :param run_suffix: Makes the run id's suffix; random by default, fixed in
+        tests that need a known id.
     :return: The run.
     :raises ValueError: If there is nothing to audit. A
         :class:`~cernis.fetch.FetchError` for a page URL that cannot be
@@ -307,7 +323,7 @@ def audit(
             )
         )
     return Run(
-        id=run_id_for(started_at),
+        id=run_id_for(started_at, run_suffix()),
         started_at=started_at,
         finished_at=now(),
         cernis_version=__version__,
