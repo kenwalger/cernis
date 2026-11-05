@@ -213,9 +213,9 @@ def format_diff_markdown(diff: RunDiff) -> str:
     ]
     for side, view in (("From", diff.before), ("To", diff.after)):
         lines.append(
-            f"| {side} | {code(view.run_id)} | {view.text('started_at')} | "
+            f"| {side} | {code(view.run_id)} | {escape(view.text('started_at'))} | "
             f"{escape(view.text('cernis_version'))} | "
-            f"{view.text('anchor_status') or 'not recorded'} |"
+            f"{escape(view.text('anchor_status') or 'not recorded')} |"
         )
     lines.append("")
     if diff.empty:
@@ -231,7 +231,7 @@ def format_diff_markdown(diff: RunDiff) -> str:
             lines.append(f"- Hashes changed: {', '.join(page.hashes)}")
         for field in page.fields:
             lines.append(
-                f"- Head field {field.name} ({field.control}): {_values(field.before)} "
+                f"- Head field {escape(field.name)} ({field.control}): {_values(field.before)} "
                 f"in run {code(diff.before.run_id)}, {_values(field.after)} "
                 f"in run {code(diff.after.run_id)}"
             )

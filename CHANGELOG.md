@@ -24,7 +24,14 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
   the page change between two stored runs, classified as `CHECKER`,
   `AUTHOR_CONTENT`, `AUTHOR_METADATA`, `PLATFORM_RENDERING`, or `UNCLASSIFIED`,
   with its evidence, and each finding change by key, with a cause
-  (`CHECKER`, `PAGE`, `RESOURCE`, or `UNKNOWN`).
+  (`CHECKER`, `PAGE`, `RESOURCE`, or `UNKNOWN`). After the Session 6c audit
+  (Session 6d, classifier version `2+h1`): a cause is named only when one
+  change is shown, the receipt a finding cites is compared, and `--from` must
+  name a run stored before `--to`'s.
+- The change class `AUTHOR_FRAME` (Session 6e, classifier version `3+h1`): a
+  frame change, alone or with author-controlled head fields, on a WordPress or
+  owned page. On DEV a frame change is still `PLATFORM_RENDERING`, and on a
+  generic page it is `UNCLASSIFIED`.
 - Snapshots keep their head fields as sorted (name, value) pairs, and
   `head_sha256` is their hash (normalization version 2, so extractor versions
   read `+n2`).
@@ -160,11 +167,21 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 
 ### Changed
 
+- Frame normalization version 3 (Session 6e): every hidden input keeps its
+  name but not its value in `frame_sha256`, whatever the name (version 2 did
+  so only for names with `csrf`, `token`, or `nonce`). Extractor versions read
+  `+n3`.
+- A finding about a head field takes its actor from `head_fields.toml`
+  (Session 6e). On DEV, `peri.title`, `peri.jsonld.parses`, the `og:image`
+  row of `peri.og.core`, `epi.og.image.resolves`, and `epi.og.image.shared`
+  are `UNKNOWN`, and a robots directive under a crawler's name makes
+  `peri.robots.directives` `UNKNOWN`. Those checks are at new versions
+  (`peri.og.core` 3, the others 2).
 - robots.txt matching moved from `urllib.robotparser`, whose answers differ
   between Python versions, to Cernis's own RFC 9309 matcher.
 - The version is read from the package metadata.
-- DESIGN.md went from draft 2 to draft 2.12; claims C-1 and C-3 have results
-  (section 8), and C-1b is proposed.
+- DESIGN.md went from draft 2 to draft 2.14; claims C-1, C-2, C-3, C-5, and
+  C-5b have results (section 8), C-2b is fixed, and C-1b and C-2c are proposed.
 - robots.txt reading is version 2 (`epi.robots.access` 1+c1+m2): only the
   first 500 KiB are parsed, a cut-off body keeps lines ended by CR, and a
   4xx answer allows everything even when its body then fails to decode.

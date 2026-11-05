@@ -2,12 +2,12 @@
 
 Run: 20261030T120000Z-0a1b2c · Cernis 0.1.0.dev0
 Started: 2026-10-30T12:00:00+00:00 · Finished: 2026-10-30T12:00:01+00:00
-Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 2 · peri.og.url_matches_canonical 2 · peri.lang 2 · peri.jsonld.parses 1 · peri.title 1 · peri.robots.directives 1 · epi.canonical.resolves 1 · epi.og.image.resolves 1 · epi.robots.access 1+c1+m2 · epi.sitemap.listed 1 · epi.links.resolve 1
+Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 3 · peri.og.url_matches_canonical 2 · peri.lang 2 · peri.jsonld.parses 2 · peri.title 2 · peri.robots.directives 2 · epi.canonical.resolves 1 · epi.og.image.resolves 2 · epi.robots.access 1+c1+m2 · epi.sitemap.listed 1 · epi.links.resolve 1
 
 Subjects:
 
-- https://dev.to/example-author/a-synthetic-post-1a2b: read whole (receipt r-002); extractor dev.article 1+n2, host
-- https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 2+n2, declared
+- https://dev.to/example-author/a-synthetic-post-1a2b: read whole (receipt r-002); extractor dev.article 1+n3, host
+- https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 2+n3, declared
 - https://blog.example.com/gone/: not read (FETCH_FAILED)
 
 ## Summary
@@ -56,7 +56,7 @@ None.
   og:description is present.
   Evidence: `head > meta[property="og:description"] content`: `A hand-written page that imitates a DEV article.` (receipt r-002)
 
-- AUTHOR · peri.og.core · og:image
+- UNKNOWN · peri.og.core · og:image
   og:image is present.
   Evidence: `head > meta[property="og:image"] content`: `https://media.dev.example/cover/synthetic-cover.png` (receipt r-002)
 
@@ -73,11 +73,11 @@ None.
   The page declares its language as 'en'.
   Evidence: `html lang`: `en` (receipt r-002)
 
-- PLATFORM · peri.jsonld.parses · block 1
+- UNKNOWN · peri.jsonld.parses · block 1
   JSON-LD block 1 parses; its @type is Article.
   Evidence: `script[type="application/ld+json"] #1`: `{ "@context": "http://schema.org", "@type": "Article", "headline": "A Synthetic Post About Fixtures", "author": {"@type": "Person", "name": "Example Author"}, "`... (200 characters) (receipt r-002)
 
-- PLATFORM · peri.title
+- UNKNOWN · peri.title
   The page's title is 47 characters long.
   Evidence: `head > title`: `A Synthetic Post About Fixtures - DEV Community` (receipt r-002)
 
@@ -90,7 +90,7 @@ None.
   The canonical URL https://blog.example.com/2026/10/a-synthetic-post/ answers 200.
   Evidence: `HTTP status`: `200` (receipt r-006)
 
-- PLATFORM · epi.og.image.resolves · https://media.dev.example/cover/synthetic-cover.png
+- UNKNOWN · epi.og.image.resolves · https://media.dev.example/cover/synthetic-cover.png
   og:image https://media.dev.example/cover/synthetic-cover.png answers 200 with an image (image/png).
   Evidence: `HTTP status`: `200` (receipt r-008)
   Evidence: `Content-Type`: `image/png` (receipt r-008)

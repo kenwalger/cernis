@@ -41,16 +41,21 @@ def _peri(id: str, description: str, version: str = "1") -> CheckSpec:
     )
 
 
-def _epi(id: str, description: str, implemented: bool = False) -> CheckSpec:
-    """Register an epitext check at version 1.
+def _epi(id: str, description: str, implemented: bool = False, version: str = "1") -> CheckSpec:
+    """Register an epitext check.
 
     :param id: The check id.
     :param description: The one-line description.
     :param implemented: Whether it can run yet (Sessions 5a and 5b implement them).
+    :param version: The check's version.
     :return: The check spec.
     """
     return CheckSpec(
-        id=id, version="1", family=Family.EPITEXT, description=description, implemented=implemented
+        id=id,
+        version=version,
+        family=Family.EPITEXT,
+        description=description,
+        implemented=implemented,
     )
 
 
@@ -60,21 +65,30 @@ CHECKS: tuple[CheckSpec, ...] = (
     _peri("peri.canonical.absolute", "The canonical URL is absolute and well formed."),
     _peri("peri.meta.description", "A meta description exists; its length is reported."),
     # Version 2 (Session 4d): reports og:type; a missing required property is a
-    # defect on a page that uses Open Graph.
+    # defect on a page that uses Open Graph. Version 3 (Session 6e): actors from
+    # head_fields.toml, so og:image on DEV is UNKNOWN (was AUTHOR).
     _peri(
         "peri.og.core",
         "og:title, og:type, og:description, og:image, and og:url are present.",
-        version="2",
+        version="3",
     ),
     # Version 2 (Session 5a): a DIFFERENT defect cites the Open Graph protocol.
     _peri("peri.og.url_matches_canonical", "og:url agrees with the canonical URL.", version="2"),
     # Version 2 (Session 4d): a missing or empty lang is a defect (WCAG 2 SC 3.1.1).
     _peri("peri.lang", "The <html> element sets a lang attribute.", version="2"),
-    _peri("peri.jsonld.parses", "JSON-LD blocks parse as JSON; their @type is reported."),
-    _peri("peri.title", "The <title> and its length are reported."),
+    # Version 2 (Session 6e) of the next three: actors from head_fields.toml. On
+    # DEV, json-ld and title are UNKNOWN (were PLATFORM), and a robots directive
+    # under a crawler's name makes peri.robots.directives UNKNOWN.
+    _peri(
+        "peri.jsonld.parses",
+        "JSON-LD blocks parse as JSON; their @type is reported.",
+        version="2",
+    ),
+    _peri("peri.title", "The <title> and its length are reported.", version="2"),
     _peri(
         "peri.robots.directives",
         "Robots meta tags and the X-Robots-Tag header, reported as facts.",
+        version="2",
     ),
     _epi(
         "epi.pair.canonical",
@@ -90,11 +104,15 @@ CHECKS: tuple[CheckSpec, ...] = (
         "epi.og.image.resolves",
         "The og:image URL's status and content type; a defect for 404, 410, or not an image.",
         implemented=True,
+        # Version 2 (Session 6e): the actor is og:image's control (UNKNOWN on DEV, was PLATFORM).
+        version="2",
     ),
     _epi(
         "epi.og.image.shared",
         "Audited articles on one site that share an og:image URL; a site fact, never a defect.",
         implemented=True,
+        # Version 2 (Session 6e): the actor is og:image's control (UNKNOWN on DEV, was PLATFORM).
+        version="2",
     ),
     _epi(
         "epi.robots.access",

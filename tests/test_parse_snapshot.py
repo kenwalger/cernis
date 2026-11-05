@@ -20,7 +20,7 @@ from cernis.parse import (
     build_snapshot,
     read_article,
 )
-from cernis.parse.snapshot import defingerprint
+from cernis.parse.snapshot import _frame_tokens, defingerprint
 
 VOLATILE_URL = "https://dev.to/example-author/volatile-tokens-7g8h"
 
@@ -321,10 +321,13 @@ def test_the_hashes_of_a_fixture_are_pinned() -> None:
     snapshot = snap(fixture("dev-article"), DEV_URL)
 
     # Version 2 (Session 6c): the head hash is of the per-field values.
-    assert NORMALIZATION_VERSION == "2"
-    assert (snapshot.content_sha256, snapshot.frame_sha256) == (
+    # Version 3 (Session 6e): the fixture's hidden search token loses its value.
+    assert NORMALIZATION_VERSION == "3"
+    # Pinning the head hash pins the exact head fields, since it is their hash.
+    assert (snapshot.content_sha256, snapshot.head_sha256, snapshot.frame_sha256) == (
         "aee4cd69e2100ae79104d70f6d9a27d936266149ba2accabd8c5d20fd69a659e",
-        "a7d26c8ffb8b6904420e6b485b4bb71ed059263b73fddfcd55c418417a3fa2d4",
+        "843c18eb7e0276f0a04d87b90066dcda8f94c3ebf39c42866318f83a9ad58e4d",
+        "d5582d62f16146eef0a55bd833f2042c1f46f1834178c74add53f067149f6845",
     )
     assert snapshot.head_sha256 == head_hash(snapshot.head_fields or ())
 
@@ -361,6 +364,24 @@ def test_a_snapshot_whose_head_fields_disagree_with_its_hash_is_refused() -> Non
 
     with pytest.raises(ModelError, match="head_fields"):
         dataclasses.replace(snapshot, head_fields=other)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        (("title", "b"), ("lang", "a")),
+        (("title",),),
+        [("lang", "a")],
+        (("lang", 1),),
+    ],
+    ids=["unsorted", "short-pair", "list", "not-text"],
+)
+def test_malformed_head_fields_are_refused(fields: object) -> None:
+    """Sorted pairs of text in a tuple, or nothing."""
+    snapshot = snap(fixture("dev-article"), DEV_URL)
+
+    with pytest.raises(ModelError, match="head_fields"):
+        dataclasses.replace(snapshot, head_fields=fields)  # type: ignore[arg-type]
 
 
 def test_a_snapshot_may_lack_head_fields() -> None:
@@ -443,4 +464,123 @@ def test_share_buttons_do_not_change_the_wordpress_content_hash() -> None:
     second = build_snapshot(receipt_for(shared), shared, site=SiteType.WORDPRESS)
 
     assert first.content_sha256 == second.content_sha256
-    assert first.extractor_version == "2+n2"
+    assert first.extractor_version == "2+n3"
+
+
+# Frame normalization version 3 (Session 6e): hidden input values and comments
+
+_FORM_PAGE = """<!doctype html>
+<html lang="en">
+<head><title>A synthetic post</title></head>
+<body>
+<header><a href="/">Example Blog</a></header>
+<div class="entry-content"><p>The article text.</p></div>
+<form id="commentform" action="/wp-comments-post.php" method="post">
+<label for="comment">Comment</label>
+<textarea id="comment" name="comment"></textarea>
+<input type="hidden" name="comment_post_ID" value="42" id="comment_post_ID">
+<input type="hidden" id="akismet_comment_nonce" name="akismet_comment_nonce" value="0a1b2c3d4e">
+<input type="hidden" id="ak_js_1" name="ak_js" value="229">
+<input type="submit" name="submit" value="Post Comment">
+</form>
+<form action="/accounts/login/" method="post">
+<input type="hidden" name="csrfmiddlewaretoken" value="QUFBQUFBQUFBQUFBQUFBQQ">
+<input type="text" name="username" value="">
+</form>
+<form action="/session" method="post">
+<input type="HIDDEN" name="authenticity_token" value="cmFpbHMtdG9rZW4tYWFh">
+<input type="Hidden" name="return_to" value="/posts/1?ref=aaaa">
+</form>
+<footer><p>Footer text.</p></footer>
+</body>
+</html>
+"""
+"""A synthetic page with a WordPress-shaped comment form, a Django-shaped login
+form, and a Rails-shaped form, each with hidden inputs."""
+
+
+def form_snap(page: str) -> Snapshot:
+    """Snapshot a form page, declared WordPress, so the forms are in the frame.
+
+    :param page: The page.
+    :return: The snapshot.
+    """
+    return snap(page.encode("utf-8"), WORDPRESS_URL, SiteType.WORDPRESS)
+
+
+def form_edit(old: str, new: str) -> Snapshot:
+    """Snapshot the form page with one exact edit.
+
+    :param old: Text that occurs exactly once.
+    :param new: Its replacement.
+    :return: The snapshot.
+    """
+    assert _FORM_PAGE.count(old) == 1, old
+    return form_snap(_FORM_PAGE.replace(old, new))
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ('name="ak_js" value="229"', 'name="ak_js" value="169"'),
+        ('value="0a1b2c3d4e"', 'value="9f8e7d6c5b"'),
+        ('name="comment_post_ID" value="42"', 'name="comment_post_ID" value="43"'),
+        ('value="QUFBQUFBQUFBQUFBQUFBQQ"', 'value="WldaWldaWldaWldaWlda"'),
+        ('value="cmFpbHMtdG9rZW4tYWFh"', 'value="b3RoZXI"'),
+        ('value="/posts/1?ref=aaaa"', 'value="/posts/1?ref=bbbb"'),
+    ],
+    ids=[
+        "wordpress-anti-spam",
+        "wordpress-nonce",
+        "wordpress-post-id",
+        "django-csrf",
+        "rails-token",
+        "uppercase-type",
+    ],
+)
+def test_a_hidden_inputs_value_does_not_move_the_frame(old: str, new: str) -> None:
+    """Hidden input values are per-request tokens on most sites; the name is kept."""
+    assert moved(form_snap(_FORM_PAGE), form_edit(old, new)) == set()
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("<footer>", "<!-- Page cached on 2026-11-05 08:31:12 --><footer>"),
+        ("<footer>", "<!--[if lt IE 9]><p>Old browser</p><![endif]--><footer>"),
+        ("</html>", "</html>\n<!-- generated in 0.31 seconds -->"),
+    ],
+    ids=["comment", "conditional-comment", "after-html"],
+)
+def test_an_html_comment_does_not_move_the_frame(old: str, new: str) -> None:
+    """Comments are never rendered, wherever they are."""
+    assert moved(form_snap(_FORM_PAGE), form_edit(old, new)) == set()
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ('name="ak_js"', 'name="ak_js_v2"'),
+        ('name="username" value=""', 'name="username" value="someone"'),
+        ("<p>Footer text.</p>", "<p>New footer text.</p>"),
+        (
+            '<input type="hidden" name="comment_post_ID"',
+            '<input type="text" name="comment_post_ID"',
+        ),
+    ],
+    ids=["hidden-name", "visible-value", "frame-text", "hidden-becomes-visible"],
+)
+def test_what_is_still_a_frame_change(old: str, new: str) -> None:
+    """A hidden input's name, a visible input's value, and rendered text still count."""
+    assert moved(form_snap(_FORM_PAGE), form_edit(old, new)) == {"frame"}
+
+
+def test_a_hidden_input_keeps_its_name_and_loses_its_value() -> None:
+    """The token itself: the element and its name, no value attribute."""
+    tree = LexborHTMLParser(_FORM_PAGE)
+    tokens = _frame_tokens(tree, None)
+
+    (ak_js,) = [
+        t for t in tokens if t[0] == "open" and isinstance(t[2], list) and ["name", "ak_js"] in t[2]
+    ]
+    assert ak_js == ["open", "input", [["id", "ak_js_1"], ["name", "ak_js"], ["type", "hidden"]]]

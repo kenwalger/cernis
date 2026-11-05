@@ -486,16 +486,20 @@ def test_an_og_image_that_is_not_an_image_is_a_defect(
     assert advice.summary == "Set og:image to the URL of an image that exists."
 
 
-def test_a_dev_og_image_defect_is_the_platforms_with_no_recommendation(tmp_path: Path) -> None:
-    """DEV generates its og:image; the author cannot fix it."""
+def test_a_dev_og_image_defect_has_an_unknown_actor(tmp_path: Path) -> None:
+    """DEV's og:image is the cover image when set, else one DEV generates (Session 6e).
+
+    The head field control file does not settle which, so the actor is
+    UNKNOWN, and an UNKNOWN defect gets a recommendation.
+    """
     site = web()
     site.add(DEV_IMAGE, respond(404))
 
     run = audit([Target(url=DEV_URL)], make_fetcher(site, tmp_path, min_interval=0), now=clock())
 
     (finding,) = pick(run, "epi.og.image.resolves")
-    assert (finding.defect, finding.actor) == (True, Actor.PLATFORM)
-    assert not [f for f in run.findings if f.based_on == (finding.id,)]
+    assert (finding.defect, finding.actor) == (True, Actor.UNKNOWN)
+    assert [f for f in run.findings if f.based_on == (finding.id,)]
 
 
 def test_an_image_redirect_is_followed_and_named(tmp_path: Path) -> None:

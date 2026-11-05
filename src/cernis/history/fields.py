@@ -21,8 +21,16 @@ from importlib.resources import files
 
 from cernis.model import Actor
 
-HISTORY_VERSION = "1"
-"""The version of the history code: matching, classification, and causes."""
+HISTORY_VERSION = "3"
+"""The version of the history code: matching, classification, and causes.
+
+Version 2 (Session 6c's audit): causes must be shown, the cited receipt is
+compared, and ``--from`` must precede ``--to``.
+
+Version 3 (Session 6e): a frame change on a WordPress page is
+``AUTHOR_FRAME``, on DEV ``PLATFORM_RENDERING``, elsewhere ``UNCLASSIFIED``.
+An owned page has no body, so its changes stay ``UNCLASSIFIED``; the rule
+names ``owned`` for the day an owned extractor finds one."""
 
 SITES = ("dev", "wordpress", "owned", "generic")
 """The site types a snapshot can belong to, as the control file names them."""
@@ -135,8 +143,9 @@ def load_head_fields(text: str) -> HeadFieldControl:
     :param text: The TOML.
     :return: The controls.
     :raises HeadFieldsError: If the file is malformed: a bad version, an
-        unknown control, an entry with no source, or a rule with neither or
-        both of ``name`` and ``pattern``.
+        unknown or missing site type, an unknown control, an entry with no
+        source, a rule with neither or both of ``name`` and ``pattern``, or a
+        name listed twice for one site type.
     """
     try:
         data = tomllib.loads(text)
@@ -154,6 +163,7 @@ def load_head_fields(text: str) -> HeadFieldControl:
         if site not in SITES or not isinstance(raw, dict):
             raise HeadFieldsError(f"{where}: unknown site type")
         rules: list[FieldRule] = []
+        names: set[str] = set()
         for number, entry in enumerate(raw.get("field", []), start=1):
             here = f"{where}.field {number}"
             if not isinstance(entry, dict):
@@ -163,6 +173,10 @@ def load_head_fields(text: str) -> HeadFieldControl:
                 part is None or (isinstance(part, str) and part) for part in (name, pattern)
             ):
                 raise HeadFieldsError(f"{here}: give exactly one of name and pattern")
+            if name is not None:
+                if name in names:
+                    raise HeadFieldsError(f"{here}: field {name!r} is listed twice")
+                names.add(name)
             rules.append(
                 FieldRule(
                     control=_actor(entry.get("control"), here),
@@ -176,6 +190,9 @@ def load_head_fields(text: str) -> HeadFieldControl:
             source=_source(raw.get("source"), where),
             rules=tuple(rules),
         )
+    missing = [site for site in SITES if site not in sites]
+    if missing:
+        raise HeadFieldsError(f"site types not described: {', '.join(missing)}")
     return HeadFieldControl(version=version, sites=sites)
 
 
@@ -192,7 +209,7 @@ def head_field_control() -> HeadFieldControl:
 def classifier_version() -> str:
     """Name the version of the change classifier.
 
-    :return: ``<history version>+h<control file version>``, such as ``1+h1``.
+    :return: ``<history version>+h<control file version>``, such as ``3+h1``.
     """
     return f"{HISTORY_VERSION}+h{head_field_control().version}"
 

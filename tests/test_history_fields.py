@@ -92,6 +92,10 @@ name = "meta:name:description"
 control = "AUTHOR"
 source = "exact"
 """
+        + "".join(
+            f'[site.{site}]\ndefault = "UNKNOWN"\nsource = "x"\n'
+            for site in ("wordpress", "owned", "generic")
+        )
     )
 
     assert control.control("dev", "meta:name:description") == (Actor.AUTHOR, "exact")
@@ -136,3 +140,25 @@ def test_a_snapshots_site_comes_from_its_extractor(
 ) -> None:
     """Owned pages use the generic extractor, chosen by a declaration or a prefix."""
     assert site_of(extractor_id, selection.value) == site
+
+
+def test_a_file_missing_a_site_type_is_refused() -> None:
+    """A typo or a missing table would otherwise make every field UNKNOWN in silence."""
+    text = _DEV.replace("[site.dev]", "[sites.dev]")
+
+    with pytest.raises(HeadFieldsError, match="site"):
+        load_head_fields(text)
+    with pytest.raises(HeadFieldsError, match="wordpress"):
+        load_head_fields(_DEV)
+
+
+def test_a_field_named_twice_is_refused() -> None:
+    """Two rules for one name would leave the control to file order."""
+    sites = "".join(
+        f'[site.{site}]\ndefault = "UNKNOWN"\nsource = "x"\n'
+        for site in ("wordpress", "owned", "generic")
+    )
+    rule = '[[site.dev.field]]\nname = "title"\ncontrol = "AUTHOR"\nsource = "x"\n'
+
+    with pytest.raises(HeadFieldsError, match="title"):
+        load_head_fields(_DEV + rule + rule + sites)

@@ -50,7 +50,7 @@ from cernis.urls import UrlMatch, compare_urls, is_absolute_http_url, normalize_
 NewId = Callable[[], str]
 """Returns the next finding id in the run."""
 
-_DEV_PLATFORM_EPI = frozenset({"epi.og.image.resolves", "epi.og.image.shared", "epi.robots.access"})
+_DEV_PLATFORM_EPI = frozenset({"epi.robots.access"})
 
 
 def epi_actor(site: SiteType | None, check_id: str) -> Actor:
@@ -58,9 +58,10 @@ def epi_actor(site: SiteType | None, check_id: str) -> Actor:
 
     :param site: The page's site type.
     :param check_id: The check.
-    :return: As for peritext; on DEV, the ``og:image`` (DEV's generated
-        social image) and robots.txt are the platform's, and the canonical
-        and the article's links are the author's.
+    :return: As for peritext: the ``og:image`` checks follow the control of
+        ``og:image`` in ``head_fields.toml`` (``UNKNOWN`` on DEV, Session 6e);
+        on DEV, robots.txt is the platform's, and the canonical and the
+        article's links are the author's.
     """
     if site is SiteType.DEV and check_id in _DEV_PLATFORM_EPI:
         return Actor.PLATFORM

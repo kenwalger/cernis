@@ -812,6 +812,7 @@ def test_change_classes_match_design() -> None:
         "CHECKER",
         "AUTHOR_CONTENT",
         "AUTHOR_METADATA",
+        "AUTHOR_FRAME",
         "PLATFORM_RENDERING",
         "UNCLASSIFIED",
     }

@@ -18,6 +18,8 @@ from cernis.history.classify import (
     diff_views,
     run_views,
 )
+from cernis.history.fields import HISTORY_VERSION, load_head_fields
+from cernis.history.report import format_diff_markdown
 from cernis.model import Actor, ChangeClass, Evidence, Run
 from cernis.parse import SiteType
 from cernis.store import MemoryStore, StoredEntry
@@ -204,13 +206,87 @@ def test_a_wordpress_metadata_edit_is_author_metadata(tmp_path: Path) -> None:
     assert diff.page_change.hashes == ("head_sha256",)
 
 
-def test_a_template_edit_is_platform_rendering(tmp_path: Path) -> None:
-    """Content unchanged, only the frame changed."""
+def test_a_wordpress_template_edit_is_author_frame(tmp_path: Path) -> None:
+    """Content unchanged, only the frame changed, on a site the author runs (Session 6e)."""
     after = edited("wordpress-entry", "</body>", "<footer>new footer</footer></body>")
 
-    assert page_class(wordpress(tmp_path, 12), wordpress(tmp_path, 13, after), WORDPRESS_URL) is (
+    diff = diff_runs(stored(wordpress(tmp_path, 12), wordpress(tmp_path, 13, after)), WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.AUTHOR_FRAME
+    assert diff.page_change.hashes == ("frame_sha256",)
+
+
+def test_a_wordpress_metadata_and_frame_edit_together_is_author_frame(tmp_path: Path) -> None:
+    """One actor made both changes, so the class is the frame's, with the fields as evidence."""
+    after = edited(
+        "wordpress-entry", 'og:site_name" content="Example Blog"', 'og:site_name" content="Blog"'
+    )
+    after = after.replace(b"</body>", b"<footer>new footer</footer></body>")
+
+    diff = diff_runs(stored(wordpress(tmp_path, 12), wordpress(tmp_path, 13, after)), WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.AUTHOR_FRAME
+    assert [f.name for f in diff.page_change.fields] == ["meta:property:og:site_name"]
+    assert diff.page_change.hashes == ("head_sha256", "frame_sha256")
+
+
+def test_a_dev_template_edit_is_platform_rendering(tmp_path: Path) -> None:
+    """On DEV, the frame is DEV's."""
+    after = edited("dev-article", '<footer class="crayons-footer">', '<footer class="new-footer">')
+
+    assert page_class(dev(tmp_path, 12), dev(tmp_path, 13, after), DEV_URL) is (
         ChangeClass.PLATFORM_RENDERING
     )
+
+
+def test_an_owned_template_edit_is_unclassified(tmp_path: Path) -> None:
+    """An owned page has no body, so its frame holds its text too: no class can be placed."""
+    before = make_run(
+        tmp_path, START, fixture("wordpress-entry"), url=WORDPRESS_URL, site=SiteType.OWNED
+    )
+    after = make_run(
+        tmp_path,
+        START.replace(hour=13),
+        edited("wordpress-entry", "</body>", "<footer>x</footer></body>"),
+        url=WORDPRESS_URL,
+        site=SiteType.OWNED,
+    )
+
+    diff = diff_runs(stored(before, after), WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.UNCLASSIFIED
+    assert any("content_sha256" in reason for reason in diff.page_change.reasons)
+
+
+def test_a_frame_change_where_nobody_is_known_to_control_the_frame_is_unclassified(
+    tmp_path: Path,
+) -> None:
+    """A generic page's frame is nobody's known, even if a body were found."""
+    first, second = views(wordpress(tmp_path, 12), wordpress(tmp_path, 13))
+    first = with_snapshot(first, frame_sha256="f" * 64, extractor_selection="generic")
+    second = with_snapshot(second, extractor_id="generic", extractor_selection="generic")
+    first = with_snapshot(first, extractor_id="generic")
+
+    diff = diff_views(first, second, WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.UNCLASSIFIED
+    assert any("frame" in reason for reason in diff.page_change.reasons)
+
+
+def test_a_diff_across_the_author_frame_classifier_change_is_checker(tmp_path: Path) -> None:
+    """Runs recorded under classifier 2+h1 and under this one compare as CHECKER first."""
+    after = edited("wordpress-entry", "</body>", "<footer>new footer</footer></body>")
+    first, second = views(wordpress(tmp_path, 12), wordpress(tmp_path, 13, after))
+    first = with_record(first, classifier_version="2+h1")
+
+    diff = diff_views(first, second, WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.CHECKER
 
 
 def test_a_dev_platform_field_change_is_platform_rendering(tmp_path: Path) -> None:
@@ -549,3 +625,302 @@ def renumbered(run: Run) -> Run:
         for f in run.findings
     )
     return dataclasses.replace(run, receipts=receipts, snapshots=snapshots, findings=findings)
+
+
+# The Session 6c audit (aud_ZoO0lIpLnb)
+
+
+def receipt_ids(view: RunView, url: str) -> list[str]:
+    """List a view's receipts requested at a URL.
+
+    :param view: The view.
+    :param url: The URL, as requested.
+    :return: The receipt ids, in run order.
+    """
+    return [rid for rid, r in view.receipts.items() if r["requested_url"] == url]
+
+
+def with_receipt(view: RunView, receipt_id: str, **changes: object) -> RunView:
+    """Change fields of one receipt in a view, or drop it.
+
+    :param view: The view.
+    :param receipt_id: The receipt.
+    :param **changes: The fields to set; ``drop=True`` removes the receipt.
+    :return: The changed view.
+    """
+    receipts = dict(view.receipts)
+    if changes.pop("drop", False):
+        del receipts[receipt_id]
+    else:
+        receipts[receipt_id] = {**receipts[receipt_id], **changes}
+    return dataclasses.replace(view, receipts=receipts)
+
+
+@pytest.mark.parametrize("order", ["reversed", "equal"])
+def test_explicit_runs_must_be_two_in_stored_order(tmp_path: Path, order: str) -> None:
+    """--from later than --to, or the same run twice, is a usage error, not a diff."""
+    runs = [dev(tmp_path, 12), dev(tmp_path, 13)]
+    before, after = (runs[1].id, runs[0].id) if order == "reversed" else (runs[0].id, runs[0].id)
+
+    with pytest.raises(DiffError) as raised:
+        diff_runs(stored(*runs), DEV_URL, before=before, after=after)
+
+    assert raised.value.usage
+
+
+def test_one_run_named_twice_is_not_a_diff(tmp_path: Path) -> None:
+    """A single stored run cannot be compared with itself."""
+    run = dev(tmp_path, 12)
+
+    with pytest.raises(DiffError):
+        diff_runs(stored(run), DEV_URL, before=run.id, after=run.id)
+
+
+def test_one_sided_choices_pick_the_neighboring_runs(tmp_path: Path) -> None:
+    """--to alone takes the run before it; --from alone takes the most recent run."""
+    runs = [dev(tmp_path, 12), dev(tmp_path, 13), dev(tmp_path, 14)]
+    entries = stored(*runs)
+
+    to_only = diff_runs(entries, DEV_URL, after=runs[1].id)
+    from_only = diff_runs(entries, DEV_URL, before=runs[0].id)
+
+    assert (to_only.before.run_id, to_only.after.run_id) == (runs[0].id, runs[1].id)
+    assert (from_only.before.run_id, from_only.after.run_id) == (runs[0].id, runs[2].id)
+    with pytest.raises(DiffError, match="came before"):
+        diff_runs(entries, DEV_URL, after=runs[0].id)
+    with pytest.raises(DiffError, match="came after"):
+        diff_runs(entries, DEV_URL, before=runs[2].id)
+
+
+def test_a_cernis_version_change_alone_is_checker_and_says_the_page_did_not_change(
+    tmp_path: Path,
+) -> None:
+    """The page change is CHECKER, and a finding from the page is CHECKER, never PAGE."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13))
+    key = key_of(first, "peri.title")
+    first = with_record(first, cernis_version="0.0.9")
+
+    diff = diff_views(first, with_finding(second, key, defect=True), DEV_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.CHECKER
+    assert diff.page_change.hashes == ()
+    assert any("no snapshot hash changed" in r for r in diff.page_change.reasons)
+    (change,) = diff.finding_changes
+    assert change.cause is Cause.CHECKER
+
+
+def test_an_extractor_change_makes_a_page_finding_change_checker(tmp_path: Path) -> None:
+    """A new extractor version is the checker, not the page."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13))
+    key = key_of(first, "peri.title")
+    first = with_snapshot(first, extractor_version="1+n1")
+
+    diff = diff_views(first, with_finding(second, key, defect=True), DEV_URL)
+
+    (change,) = diff.finding_changes
+    assert (change.cause, change.page_class) == (Cause.CHECKER, None)
+
+
+def test_an_appeared_finding_whose_check_version_differs_is_checker(tmp_path: Path) -> None:
+    """The earlier run's findings of the same check have another version."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13))
+    key = key_of(first, "peri.title")
+    sibling = {**first.findings[key], "key": "sibling", "target": "x"}
+    kept = {k: f for k, f in first.findings.items() if k != key}
+    before = dataclasses.replace(first, findings={**kept, "sibling": sibling})
+
+    diff = diff_views(before, with_finding(second, key, check_version="9"), DEV_URL)
+
+    (change,) = [c for c in diff.finding_changes if c.key == key]
+    assert (change.kind, change.cause) == ("appeared", Cause.CHECKER)
+
+
+def test_a_resource_fetched_in_only_one_run_is_not_shown_to_have_changed(tmp_path: Path) -> None:
+    """No receipt in one run means nothing to compare: UNKNOWN, with the reason."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13))
+    key = key_of(first, "epi.canonical.resolves", DEV_CANONICAL)
+    for rid in receipt_ids(first, DEV_CANONICAL):
+        first = with_receipt(first, rid, drop=True)
+
+    diff = diff_views(first, with_finding(second, key, defect=True), DEV_URL)
+
+    (change,) = diff.finding_changes
+    assert change.cause is Cause.UNKNOWN
+    assert "fetched in only one run" in change.detail
+
+
+def test_the_receipt_a_finding_cites_is_compared_not_the_last_fetch(tmp_path: Path) -> None:
+    """A later, uncited fetch of the same URL is not the finding's evidence."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13))
+    key = key_of(first, "epi.canonical.resolves", DEV_CANONICAL)
+    (cited,) = receipt_ids(second, DEV_CANONICAL)
+    extra = {**second.receipts[cited], "id": "r-extra", "status_code": 500}
+    second = dataclasses.replace(second, receipts={**second.receipts, "r-extra": extra})
+
+    diff = diff_views(first, with_finding(second, key, defect=True), DEV_URL)
+
+    (change,) = diff.finding_changes
+    assert change.cause is Cause.UNKNOWN
+
+
+def test_a_304_with_the_same_body_is_not_a_resource_change(tmp_path: Path) -> None:
+    """Revalidation is not a change: the cached body's hash is the same."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13))
+    key = key_of(first, "epi.canonical.resolves", DEV_CANONICAL)
+    (rid,) = receipt_ids(second, DEV_CANONICAL)
+    second = with_receipt(second, rid, status_code=304)
+
+    diff = diff_views(first, with_finding(second, key, defect=True), DEV_URL)
+
+    (change,) = diff.finding_changes
+    assert change.cause is Cause.UNKNOWN
+
+
+def test_a_page_and_a_resource_both_changed_is_unknown_naming_both(tmp_path: Path) -> None:
+    """Two shown candidates are not one cause."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13, canonical=404))
+    second = with_snapshot(second, frame_sha256="f" * 64)
+    key = key_of(second, "epi.canonical.resolves", DEV_CANONICAL)
+    (page_receipt,) = receipt_ids(second, DEV_URL)
+    stored_evidence = second.findings[key]["evidence"]
+    assert isinstance(stored_evidence, list)
+    from_page = {"receipt_id": page_receipt, "location": "page", "observed": "x"}
+    second = with_finding(second, key, evidence=[*stored_evidence, from_page])
+
+    diff = diff_views(first, second, DEV_URL)
+
+    (change,) = [c for c in diff.finding_changes if c.key == key]
+    assert change.cause is Cause.UNKNOWN
+    assert DEV_CANONICAL in change.detail
+    assert "PLATFORM_RENDERING" in change.detail
+
+
+def test_a_recommendation_resting_on_changes_with_different_causes_is_unknown(
+    tmp_path: Path,
+) -> None:
+    """One cause is not chosen from several by list order."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13, canonical=404))
+    title = key_of(second, "peri.title")
+    second = with_finding(second, title, defect=True)
+    (advice_key,) = [
+        k
+        for k, f in second.findings.items()
+        if str(f["target"]).startswith("epi.canonical.resolves.fix")
+    ]
+    based = second.findings[advice_key]["based_on"]
+    assert isinstance(based, list)
+    second = with_finding(second, advice_key, based_on=[*based, second.findings[title]["id"]])
+
+    diff = diff_views(first, second, DEV_URL)
+
+    (advice,) = [c for c in diff.finding_changes if c.key == advice_key]
+    assert advice.cause is Cause.UNKNOWN
+
+
+def test_no_snapshot_in_either_run_names_both_runs(tmp_path: Path) -> None:
+    """Nothing was read whole in either run; the reason says so of both."""
+    first, second = views(wordpress(tmp_path, 12), wordpress(tmp_path, 13))
+    first = dataclasses.replace(first, snapshots={})
+    second = dataclasses.replace(second, snapshots={})
+
+    diff = diff_views(first, second, WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.UNCLASSIFIED
+    (reason,) = diff.page_change.reasons
+    assert first.run_id in reason
+    assert second.run_id in reason
+
+
+def test_a_head_hash_change_with_no_field_change_is_unclassified(tmp_path: Path) -> None:
+    """A stored hash that disagrees with its fields is placed nowhere, without failing."""
+    first, second = views(wordpress(tmp_path, 12), wordpress(tmp_path, 13))
+    first = with_snapshot(first, head_sha256="0" * 64)
+
+    diff = diff_views(first, second, WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.UNCLASSIFIED
+
+
+def test_the_diff_names_the_version_of_the_control_it_used(tmp_path: Path) -> None:
+    """A control file given by the caller is the one the version names."""
+    first, second = views(dev(tmp_path, 12), dev(tmp_path, 13))
+    sites = ("dev", "wordpress", "owned", "generic")
+    control = load_head_fields(
+        "version = 7\n"
+        + "".join(f'[site.{site}]\ndefault = "UNKNOWN"\nsource = "x"\n' for site in sites)
+    )
+
+    diff = diff_views(first, second, DEV_URL, control=control)
+
+    assert diff.classifier_version == f"{HISTORY_VERSION}+h7"
+
+
+def test_a_page_supplied_field_name_is_escaped_in_markdown(tmp_path: Path) -> None:
+    """A meta name is the page's text, so it cannot write Markdown into the diff."""
+    after = edited(
+        "wordpress-entry",
+        'og:site_name" content="Example Blog"',
+        'og:site_name" content="Example Blog" /><meta name="*x*" content="y"',
+    )
+
+    diff = diff_runs(stored(wordpress(tmp_path, 12), wordpress(tmp_path, 13, after)), WORDPRESS_URL)
+
+    assert "Head field meta:name:\\*x\\*" in format_diff_markdown(diff)
+
+
+# The Session 6e audit (aud_1vdgpbq7t4)
+
+
+def test_a_dev_platform_field_and_frame_change_give_both_reasons(tmp_path: Path) -> None:
+    """One class, PLATFORM_RENDERING, but each contributing change is named."""
+    after = edited("dev-article", 'content="DEV Community"', 'content="DEV"')
+    after = after.replace(b'<footer class="crayons-footer">', b'<footer class="new-footer">')
+
+    diff = diff_runs(stored(dev(tmp_path, 12), dev(tmp_path, 13, after)), DEV_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.PLATFORM_RENDERING
+    assert any("platform controls" in r for r in diff.page_change.reasons)
+    assert any("frame_sha256" in r for r in diff.page_change.reasons)
+
+
+def test_a_head_hash_change_with_no_field_change_is_unclassified_with_a_frame_change(
+    tmp_path: Path,
+) -> None:
+    """The anomaly is not hidden by a frame change on an author-controlled site."""
+    after = edited("wordpress-entry", "</body>", "<footer>new footer</footer></body>")
+    first, second = views(wordpress(tmp_path, 12), wordpress(tmp_path, 13, after))
+    first = with_snapshot(first, head_sha256="0" * 64)
+
+    diff = diff_views(first, second, WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.UNCLASSIFIED
+    assert any("no head field did" in r for r in diff.page_change.reasons)
+
+
+def test_a_wordpress_content_and_frame_edit_together_is_unclassified(tmp_path: Path) -> None:
+    """An article edit is never folded into a frame change (Session 6e, decision 3)."""
+    after = edited("wordpress-entry", "imitates the structure", "copies the structure")
+    after = after.replace(b"</body>", b"<footer>new footer</footer></body>")
+
+    diff = diff_runs(stored(wordpress(tmp_path, 12), wordpress(tmp_path, 13, after)), WORDPRESS_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.UNCLASSIFIED
+    assert any("more than one class" in r for r in diff.page_change.reasons)
+
+
+def test_a_dev_unknown_field_and_frame_change_is_unclassified(tmp_path: Path) -> None:
+    """An UNKNOWN field decides first, whatever else changed."""
+    after = edited("dev-article", "Fixtures - DEV Community", "Fixtures - DEV")
+    after = after.replace(b'<footer class="crayons-footer">', b'<footer class="new-footer">')
+
+    diff = diff_runs(stored(dev(tmp_path, 12), dev(tmp_path, 13, after)), DEV_URL)
+
+    assert diff.page_change is not None
+    assert diff.page_change.change_class is ChangeClass.UNCLASSIFIED
+    assert any("UNKNOWN" in r for r in diff.page_change.reasons)

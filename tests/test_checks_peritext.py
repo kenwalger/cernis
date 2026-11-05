@@ -12,15 +12,16 @@ import itertools
 import pytest
 from parse_support import DEV_URL, WORDPRESS_URL, fixture, receipt_for
 
-from cernis.checks.peritext import peritext_findings
+from cernis.checks.peritext import actor_for, peritext_findings
 from cernis.checks.recommend import recommendations_for
+from cernis.history.fields import head_field_control
 from cernis.model import Actor, Finding, Status
 from cernis.parse import SiteType, effective_site, parse_page
 
 OG_URL_STANDARD = "; the Open Graph protocol (ogp.me) defines og:url as the object's canonical URL."
 """What a DIFFERENT og:url defect ends with (version 2, Session 5a)."""
 
-A, P = Actor.AUTHOR, Actor.PLATFORM
+A, P, U = Actor.AUTHOR, Actor.PLATFORM, Actor.UNKNOWN
 OBS, ND = Status.OBSERVED, Status.NOT_DETERMINABLE
 VOLATILE_URL = "https://dev.to/example-author/volatile-tokens-7g8h"
 
@@ -41,6 +42,7 @@ def og_rows(
     states: dict[str, str],
     platform: Actor | None = None,
     defects: frozenset[str] = frozenset(),
+    image: Actor | None = None,
 ) -> list[Row]:
     """Write the five peri.og.core rows.
 
@@ -49,6 +51,8 @@ def og_rows(
     :param platform: The actor for og:type and og:url, if different (DEV).
     :param defects: The properties expected to be defects: required, missing,
         on a page that uses Open Graph. Their summary names the standard.
+    :param image: The actor for og:image, if different (DEV: ``UNKNOWN``,
+        from the head field control file, Session 6e).
     :return: The rows.
     """
     return [
@@ -57,7 +61,11 @@ def og_rows(
             prop,
             OBS,
             prop in defects,
-            platform if prop in ("og:type", "og:url") and platform else actor,
+            platform
+            if prop in ("og:type", "og:url") and platform
+            else image
+            if prop == "og:image" and image
+            else actor,
             f"{prop} {states[prop]}"
             + (
                 f" The page uses Open Graph, and the Open Graph protocol (ogp.me) requires {prop} on every page that does."
@@ -99,7 +107,7 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 A,
                 f"The page has a meta description of {len(DEV_DESCRIPTION)} characters.",
             ),
-            *og_rows(A, ALL_PRESENT, platform=P),
+            *og_rows(A, ALL_PRESENT, platform=P, image=U),
             (
                 "peri.og.url_matches_canonical",
                 "",
@@ -115,7 +123,7 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 "block 1",
                 OBS,
                 False,
-                P,
+                U,
                 "JSON-LD block 1 parses; its @type is Article.",
             ),
             (
@@ -123,7 +131,7 @@ EXPECTED: dict[str, tuple[str, SiteType | None, list[Row], list[tuple[str, str]]
                 "",
                 OBS,
                 False,
-                P,
+                U,
                 f"The page's title is {len(DEV_TITLE)} characters long.",
             ),
         ],
@@ -544,6 +552,7 @@ for _name in ("volatile-a", "volatile-b"):
                 },
                 platform=P,
                 defects=frozenset({"og:type", "og:image", "og:url"}),
+                image=U,
             ),
             (
                 "peri.og.url_matches_canonical",
@@ -554,13 +563,13 @@ for _name in ("volatile-a", "volatile-b"):
                 "There is no og:url to compare with the canonical URL.",
             ),
             ("peri.lang", "", OBS, False, P, "The page declares its language as 'en'."),
-            ("peri.jsonld.parses", "", OBS, False, P, "The page has no JSON-LD blocks."),
+            ("peri.jsonld.parses", "", OBS, False, U, "The page has no JSON-LD blocks."),
             (
                 "peri.title",
                 "",
                 OBS,
                 False,
-                P,
+                U,
                 f"The page's title is {len('A Synthetic Post With Volatile Tokens')} characters long.",
             ),
         ],
@@ -591,8 +600,9 @@ for _name, (_url, _site, _rows, _advice) in EXPECTED.items():
             )
         )
         continue
-    # The row's actor is the page's peri.title actor: the platform's on DEV.
-    _actor = next(row[4] for row in _rows if row[0] == "peri.title")
+    # The row's actor is the page's lang actor: the robots meta and lang are
+    # both DEV's template on DEV (head_fields.toml), the author's elsewhere.
+    _actor = next(row[4] for row in _rows if row[0] == "peri.lang")
     _rows.append((*NO_ROBOTS[:4], _actor, NO_ROBOTS[4]))
 
 
@@ -946,9 +956,113 @@ def test_an_empty_required_property_is_missing() -> None:
     assert (rec.rationale or "").endswith("but og:title is empty.")
 
 
-def test_the_new_check_versions_are_two() -> None:
-    """Behavior changed, so the versions moved (CLAUDE.md: bump on any change)."""
+def test_the_new_check_versions_are_recorded() -> None:
+    """Behavior changed, so the versions moved (CLAUDE.md: bump on any change).
+
+    peri.lang is at 2 (Session 4d); peri.og.core is at 3 (Session 6e, its
+    og:image actor from the head field control file).
+    """
     findings, _ = _findings(b"<html></html>", "peri.lang")
     og, _ = _findings(b"<html></html>", "peri.og.core")
 
-    assert {f.check_version for f in findings + og} == {"2"}
+    assert {f.check_version for f in findings} == {"2"}
+    assert {f.check_version for f in og} == {"3"}
+
+
+# One source for who controls a DEV head field (Session 6e)
+
+
+@pytest.mark.parametrize(
+    ("check_id", "target", "field"),
+    [
+        ("peri.canonical.present", "", "canonical"),
+        ("peri.canonical.single", "", "canonical"),
+        ("peri.canonical.absolute", "", "canonical"),
+        ("peri.meta.description", "", "meta:name:description"),
+        *(("peri.og.core", prop, f"meta:property:{prop}") for prop in OG_PROPS),
+        ("peri.og.url_matches_canonical", "", "meta:property:og:url"),
+        ("peri.lang", "", "lang"),
+        ("peri.jsonld.parses", "block 1", "json-ld"),
+        ("peri.title", "", "title"),
+        ("peri.robots.directives", "", "meta:name:robots"),
+        ("epi.og.image.resolves", "", "meta:property:og:image"),
+        ("epi.og.image.shared", "", "meta:property:og:image"),
+    ],
+)
+def test_a_dev_findings_actor_is_its_fields_control(check_id: str, target: str, field: str) -> None:
+    """The check reads the control file for the head field it reports on."""
+    expected = head_field_control().control("dev", field)[0]
+
+    assert actor_for(SiteType.DEV, check_id, target) is expected
+
+
+@pytest.mark.parametrize(
+    ("check_id", "target", "actor"),
+    [
+        ("peri.title", "", U),
+        ("peri.jsonld.parses", "block 1", U),
+        ("peri.og.core", "og:image", U),
+        ("epi.og.image.resolves", "", U),
+        ("peri.og.core", "og:url", P),
+        ("peri.og.core", "og:title", A),
+    ],
+)
+def test_the_dev_actors_the_control_file_changed(check_id: str, target: str, actor: Actor) -> None:
+    """Where the old table and the control file disagreed, the control file wins."""
+    assert actor_for(SiteType.DEV, check_id, target) is actor
+
+
+def test_a_dev_robots_directive_under_another_name_is_unknown() -> None:
+    """Only the robots meta is settled as DEV's; a crawler-named one is not listed."""
+    body = fixture("dev-article").replace(
+        b"</head>", b'<meta name="googlebot" content="noindex"></head>'
+    )
+
+    receipt = receipt_for(body, DEV_URL)
+    counter = itertools.count(1)
+    findings = peritext_findings(
+        parse_page(receipt, body),
+        receipt,
+        subject_url=DEV_URL,
+        site=effective_site(DEV_URL, None),
+        new_id=lambda: f"f-{next(counter):03d}",
+    )
+
+    (robots,) = [f for f in findings if f.check_id == "peri.robots.directives"]
+    assert robots.actor is U
+
+
+_ACTOR_TABLE: dict[tuple[str, str], tuple[Actor, Actor, Actor, Actor]] = {
+    # (check, target): (dev, wordpress, owned, no site type)
+    ("peri.canonical.present", ""): (A, A, A, U),
+    ("peri.canonical.single", ""): (A, A, A, U),
+    ("peri.canonical.absolute", ""): (A, A, A, U),
+    ("peri.meta.description", ""): (A, A, A, U),
+    ("peri.og.core", "og:title"): (A, A, A, U),
+    ("peri.og.core", "og:type"): (P, A, A, U),
+    ("peri.og.core", "og:description"): (A, A, A, U),
+    ("peri.og.core", "og:image"): (U, A, A, U),
+    ("peri.og.core", "og:url"): (P, A, A, U),
+    ("peri.og.url_matches_canonical", ""): (P, A, A, U),
+    ("peri.lang", ""): (P, A, A, U),
+    ("peri.jsonld.parses", "block 1"): (U, A, A, U),
+    ("peri.title", ""): (U, A, A, U),
+    ("peri.robots.directives", ""): (P, A, A, U),
+    ("epi.og.image.resolves", ""): (U, A, A, U),
+    ("epi.og.image.shared", ""): (U, A, A, U),
+    ("epi.canonical.resolves", ""): (A, A, A, U),
+    ("epi.links.resolve", ""): (A, A, A, U),
+}
+"""Every actor, pinned by value for each site type (the Session 6e audit, finding C7).
+
+Off DEV, the control file gives what the old rule gave: AUTHOR on WordPress
+and owned pages, UNKNOWN with no site type."""
+
+
+@pytest.mark.parametrize(("check_id", "target"), sorted(_ACTOR_TABLE))
+def test_every_actor_is_pinned_for_every_site_type(check_id: str, target: str) -> None:
+    """Explicit values, so a wrong mapping or a changed control file fails here."""
+    sites = (SiteType.DEV, SiteType.WORDPRESS, SiteType.OWNED, None)
+    actual = tuple(actor_for(site, check_id, target) for site in sites)
+
+    assert actual == _ACTOR_TABLE[(check_id, target)]

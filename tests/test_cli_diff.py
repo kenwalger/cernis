@@ -60,7 +60,7 @@ def test_two_runs_of_an_unchanged_page_say_so_plainly(
     assert "No changes between these runs." in out
     assert f"`{ids[0]}`" in out
     assert f"`{ids[1]}`" in out
-    assert "Classifier: 1+h1" in out
+    assert "Classifier: 3+h1" in out
 
 
 def test_the_default_is_the_two_most_recent_runs(

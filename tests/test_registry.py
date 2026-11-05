@@ -58,11 +58,23 @@ def test_every_check_is_implemented() -> None:
     """The ten peritext checks (Sessions 4b and 5b) and six epitext checks (5a and 5b) run.
 
     Session 4d bumped peri.lang and peri.og.core to version 2, and Session 5a
-    peri.og.url_matches_canonical; every other check is still at version 1.
+    peri.og.url_matches_canonical. Session 6e's actors from the head field
+    control file bumped peri.og.core to 3, and peri.title, peri.jsonld.parses,
+    peri.robots.directives, epi.og.image.resolves, and epi.og.image.shared to
+    2. Every other check is still at version 1.
     """
-    bumped = {"peri.lang", "peri.og.core", "peri.og.url_matches_canonical"}
+    versions = {
+        "peri.lang": "2",
+        "peri.og.url_matches_canonical": "2",
+        "peri.og.core": "3",
+        "peri.title": "2",
+        "peri.jsonld.parses": "2",
+        "peri.robots.directives": "2",
+        "epi.og.image.resolves": "2",
+        "epi.og.image.shared": "2",
+    }
     for spec in CHECKS:
-        assert spec.version == ("2" if spec.id in bumped else "1"), spec.id
+        assert spec.version == versions.get(spec.id, "1"), spec.id
         implemented = spec.family is Family.PERITEXT or spec.id in EPITEXT_IMPLEMENTED
         assert spec.implemented is implemented, spec.id
 

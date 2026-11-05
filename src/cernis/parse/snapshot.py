@@ -36,17 +36,23 @@ it is a frame change, editing it is not). It is a list of open tags (name
 and sorted attributes), close tags, and text, after these steps:
 
 - ``<html lang>`` left out (it is metadata);
-- comments dropped; the contents of ``script``, ``style``, ``noscript``, and
-  ``template`` dropped (the elements and their attributes kept);
+- comments dropped, conditional comments included, wherever they are (they
+  are never rendered); the contents of ``script``, ``style``, ``noscript``,
+  and ``template`` dropped (the elements and their attributes kept);
+- every hidden ``input`` (``type`` ``hidden``, in any case) kept with its
+  ``name`` and other attributes but without its ``value``: hidden values are
+  per-request tokens on most sites (nonces, CSRF tokens, anti-spam fields),
+  and they are not part of the page's design (normalization version 3). The
+  trade-off is deliberate: a hidden value that is not a token, such as a
+  comment form's post id or a redirect target, can change without moving the
+  frame. Adding, removing, or renaming a hidden input still moves it;
 - text and attribute values normalized like text;
 - **volatile tokens** replaced, because they change on every request:
 
   - ``nonce`` and ``integrity`` attributes, and any attribute whose name
     contains ``csrf``, are dropped;
-  - the ``value`` of a hidden ``input`` whose name contains ``csrf``,
-    ``token``, or ``nonce`` (Rails' ``authenticity_token``, WordPress's
-    ``_wpnonce``), and the ``content`` of a ``meta`` whose name contains
-    ``csrf``, become ``~``;
+  - the ``content`` of a ``meta`` whose name contains ``csrf`` becomes
+    ``~``;
   - in URL attributes (``href``, ``src``, ``srcset``, ``action``,
     ``poster``, ``data-src``, ``data-srcset``), a run of 8 or more hex
     digits between ``-``, ``.``, or ``_`` and a delimiter (an asset
@@ -87,11 +93,15 @@ from cernis.parse.html import (
     visible_text,
 )
 
-NORMALIZATION_VERSION = "2"
+NORMALIZATION_VERSION = "3"
 """The version of the normalization rules in this module.
 
 Version 2 (Session 6c): ``head_sha256`` is the hash of the per-field head
-values, which snapshots now keep; the values compared are the same."""
+values, which snapshots now keep; the values compared are the same.
+
+Version 3 (Session 6e): the frame keeps no hidden input's ``value``, whatever
+its name (version 2 replaced it only for names containing ``csrf``,
+``token``, or ``nonce``)."""
 
 _URL_ATTRIBUTES = frozenset(
     {"href", "src", "srcset", "action", "poster", "data-src", "data-srcset"}
@@ -101,7 +111,6 @@ _FINGERPRINT = re.compile(r"(?<=[-._])[0-9A-Fa-f]{8,}(?=[-._/?#,\s]|$)")
 _CACHE_BUSTER = re.compile(
     r"([?&](?:v|ver|version|hash|h|cb|t|ts|_|rev|build)=)[^&#,\s]*", re.IGNORECASE
 )
-_VOLATILE_INPUT = re.compile(r"csrf|token|nonce", re.IGNORECASE)
 _TOKEN = "~"
 
 
@@ -200,11 +209,7 @@ def _attributes(node: LexborNode) -> list[list[str]]:
     :return: ``[name, value]`` pairs, sorted, with volatile tokens replaced.
     """
     attributes = node.attributes
-    hidden_token = (
-        node.tag == "input"
-        and (attributes.get("type") or "").strip().lower() == "hidden"
-        and bool(_VOLATILE_INPUT.search(attributes.get("name") or ""))
-    )
+    hidden = node.tag == "input" and (attributes.get("type") or "").strip().lower() == "hidden"
     pairs: list[list[str]] = []
     for name, value in attributes.items():
         name = name.lower()
@@ -212,10 +217,10 @@ def _attributes(node: LexborNode) -> list[list[str]]:
             continue
         if node.tag == "html" and name == "lang":
             continue  # metadata: counted in head_sha256
+        if hidden and name == "value":
+            continue  # a per-request token on most sites (normalization version 3)
         text = value or ""
-        if hidden_token and name == "value":
-            text = _TOKEN
-        elif name in _URL_ATTRIBUTES:
+        if name in _URL_ATTRIBUTES:
             text = defingerprint(text)
         pairs.append([name, normalize_text(text)])
     return sorted(pairs)

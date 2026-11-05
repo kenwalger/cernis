@@ -33,6 +33,7 @@ from urllib.parse import urljoin, urlsplit
 
 from cernis.checks.registry import check
 from cernis.crawlers import crawler_list
+from cernis.history.fields import head_field_control
 from cernis.model import Actor, Evidence, Finding, ReasonCode, Receipt, Status
 from cernis.parse.extractors import SiteType
 from cernis.parse.html import Canonical, MetaTag, ParsedPage, normalize_text
@@ -53,37 +54,61 @@ WCAG_LANGUAGE = "WCAG 2 success criterion 3.1.1 (Language of Page, Level A)"
 WHOLE_DOCUMENT = "the whole document"
 """The location of a search that covered the page and found nothing."""
 
-_DEV_PLATFORM = frozenset(
-    {
-        ("peri.og.core", "og:type"),
-        ("peri.og.core", "og:url"),
-        ("peri.og.url_matches_canonical", ""),
-        ("peri.lang", ""),
-        ("peri.jsonld.parses", ""),
-        ("peri.title", ""),
-        ("peri.robots.directives", ""),
-    }
-)
+CHECK_FIELDS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("peri.canonical.present", ""): ("canonical",),
+    ("peri.canonical.single", ""): ("canonical",),
+    ("peri.canonical.absolute", ""): ("canonical",),
+    ("peri.meta.description", ""): ("meta:name:description",),
+    **{("peri.og.core", prop): (f"meta:property:{prop}",) for prop in OG_CORE},
+    ("peri.og.url_matches_canonical", ""): ("meta:property:og:url",),
+    ("peri.lang", ""): ("lang",),
+    ("peri.jsonld.parses", ""): ("json-ld",),
+    ("peri.title", ""): ("title",),
+    ("peri.robots.directives", ""): ("meta:name:robots",),
+    ("epi.og.image.resolves", ""): ("meta:property:og:image",),
+    ("epi.og.image.shared", ""): ("meta:property:og:image",),
+}
+"""The head field each check, by target, reports on (Session 6e).
+
+A finding's actor is that field's control in ``head_fields.toml``, the one
+source for who controls a head field. ``peri.og.url_matches_canonical``
+reports on ``og:url``, measured against the canonical; the canonical checks
+on the canonical alone. Every JSON-LD block counts as ``json-ld``."""
 
 NewId = Callable[[], str]
 """Returns the next finding id in the run."""
 
 
-def actor_for(site: SiteType | None, check_id: str, target: str = "") -> Actor:
+def actor_for(
+    site: SiteType | None,
+    check_id: str,
+    target: str = "",
+    fields: tuple[str, ...] = (),
+) -> Actor:
     """Say who can change what a check looks at.
+
+    For a check about head fields (:data:`CHECK_FIELDS`), the control file
+    says, field by field: one control for every field is the actor, and
+    fields with different controls make it ``UNKNOWN``. Any other check (an
+    epitext resource) is the author's on WordPress, owned, and DEV pages.
 
     :param site: The page's site type, declared or detected; ``None`` if unknown.
     :param check_id: The check.
-    :param target: The finding's target; only ``og:url`` matters, and every
-        JSON-LD block counts the same.
+    :param target: The finding's target; every JSON-LD block counts the same.
+    :param fields: More head fields the finding reports on, such as a
+        robots directive under a crawler's name.
     :return: The actor.
     """
-    if site in (SiteType.WORDPRESS, SiteType.OWNED):
-        return Actor.AUTHOR
-    if site is SiteType.DEV:
-        key = (check_id, "" if check_id == "peri.jsonld.parses" else target)
-        return Actor.PLATFORM if key in _DEV_PLATFORM else Actor.AUTHOR
-    return Actor.UNKNOWN
+    key = (check_id, "" if check_id == "peri.jsonld.parses" else target)
+    names = CHECK_FIELDS.get(key)
+    if names is None:
+        if site in (SiteType.WORDPRESS, SiteType.OWNED, SiteType.DEV):
+            return Actor.AUTHOR
+        return Actor.UNKNOWN
+    control = head_field_control()
+    sites = "generic" if site is None else site.value
+    actors = {control.control(sites, name)[0] for name in (*names, *fields)}
+    return actors.pop() if len(actors) == 1 else Actor.UNKNOWN
 
 
 class _Context:
@@ -135,6 +160,7 @@ class _Context:
         *,
         target: str = "",
         defect: bool = False,
+        fields: tuple[str, ...] = (),
     ) -> Finding:
         """Build an OBSERVED finding.
 
@@ -143,6 +169,7 @@ class _Context:
         :param evidence: What was seen or searched for.
         :param target: The finding's target.
         :param defect: Whether the table's defect condition holds.
+        :param fields: More head fields the finding reports on, for its actor.
         :return: The finding.
         """
         return Finding(
@@ -150,7 +177,7 @@ class _Context:
             check_id=check_id,
             check_version=check(check_id).version,
             status=Status.OBSERVED,
-            actor=actor_for(self.site, check_id, target),
+            actor=actor_for(self.site, check_id, target, fields),
             subject_url=self.subject_url,
             summary=summary,
             target=target,
@@ -656,7 +683,8 @@ def robots_directives(ctx: _Context) -> list[Finding]:
         )
     else:
         summary = f"The page declares robots directives: {'; '.join(parts)}."
-    return [ctx.observed("peri.robots.directives", summary, evidence)]
+    reported = tuple(sorted({f"meta:name:{tag.key.strip().lower()}" for tag in tags}))
+    return [ctx.observed("peri.robots.directives", summary, evidence, fields=reported)]
 
 
 CHECK_FUNCTIONS: tuple[tuple[str, Callable[[_Context], list[Finding]]], ...] = (

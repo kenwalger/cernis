@@ -9,25 +9,35 @@ receipt (a ``2xx``, or a ``304`` with its cached body) in that run.
 
 **Page changes.** ``CHECKER`` first: the Cernis version, the classifier
 version, or the extractor id or version differs. Then, by what changed:
-``AUTHOR_CONTENT`` (``content_sha256``), ``AUTHOR_METADATA`` (only ``AUTHOR``
-head fields), ``PLATFORM_RENDERING`` (content unchanged, and only the frame or
-``PLATFORM`` head fields), and ``UNCLASSIFIED`` for anything else: an
-``UNKNOWN`` field, a missing ``content_sha256``, more than one class at once,
-a head change involving a snapshot without per-field values, or a page with
-no snapshot in one of the runs.
+``AUTHOR_CONTENT`` (``content_sha256``); ``AUTHOR_METADATA`` (only ``AUTHOR``
+head fields); ``AUTHOR_FRAME`` (content unchanged, and the frame changed,
+alone or with ``AUTHOR`` head fields, on a ``wordpress`` page, or an ``owned``
+one if it ever has a body; Session 6e); ``PLATFORM_RENDERING`` (content
+unchanged, and only ``PLATFORM`` head fields, or the frame of a ``dev``
+page); and ``UNCLASSIFIED`` for anything else: an ``UNKNOWN`` field, a missing
+``content_sha256`` (so every owned page today), a frame change on a
+``generic`` page, a head hash change with no head field change, more than one
+class at once (content with the frame included), a head change involving a
+snapshot without per-field values, or a page with no snapshot in a run.
+``AUTHOR_FRAME`` names who controls the frame (DESIGN.md section 3), not who
+made the change: on WordPress the frame includes readers' comments and the
+site's widgets.
 
 **Finding changes.** A key that appears, disappears, or changes ``status``,
 ``defect``, ``reason_code``, or evidence values. Evidence is compared on its
 locations and values only, never on receipt ids or fetch times. A key whose
 ``check_version`` differs is a ``CHECKER`` change.
 
-**Causes** (decision 3): ``CHECKER`` (the check version, or the classifier
-version, differs); ``PAGE`` (the evidence is from the page's own receipt, and
-the page changed; it carries the page change's class); ``RESOURCE`` (the
-evidence is from another receipt, whose status, final URL, body hash, or error
-kind differs between the runs; the resource is named); and ``UNKNOWN``
-(nothing above can be shown, including a resource whose receipts are
-identical, and page evidence when the page did not change).
+**Causes** (decision 3): ``CHECKER`` (the check version, the classifier
+version, or the Cernis version differs, or the evidence is from the page and
+its extractor changed); ``PAGE`` (the evidence is from the page's own receipt,
+and the page changed; it carries the page change's class); ``RESOURCE`` (the
+evidence is from another receipt, and the receipt it cites differs between the
+runs in status, final URL, body hash, or error kind, a ``304`` that validated
+a cached ``200`` counting as that ``200``; the resource is named); and
+``UNKNOWN`` (nothing above can be shown, including a resource whose receipts
+are identical or that was fetched in only one run, page evidence when the
+page did not change, and more than one shown change at once).
 """
 
 import dataclasses
@@ -36,7 +46,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from cernis.history.fields import HeadFieldControl, classifier_version, head_field_control, site_of
+from cernis.history.fields import HISTORY_VERSION, HeadFieldControl, head_field_control, site_of
 from cernis.model import Actor, ChangeClass
 from cernis.store.base import StoredEntry
 from cernis.urls import normalize_url
@@ -49,6 +59,13 @@ RECEIPT_FIELDS = ("status_code", "final_url", "body_sha256", "error_kind")
 
 FINDING_FIELDS = ("status", "defect", "reason_code")
 """The finding fields compared besides evidence."""
+
+_FRAME_CLASS = {
+    "wordpress": ChangeClass.AUTHOR_FRAME,
+    "owned": ChangeClass.AUTHOR_FRAME,
+    "dev": ChangeClass.PLATFORM_RENDERING,
+}
+"""Who a frame change is, by site type (Session 6e); a generic page's frame is nobody's known."""
 
 
 class Cause(StrEnum):
@@ -140,12 +157,16 @@ class PageChange:
     :param reasons: Why it has that class, in sentences.
     :param hashes: The snapshot hashes that changed.
     :param fields: The head fields that changed, with their control.
+    :param shown: Whether a difference between the runs' snapshots was
+        observed; ``False`` when neither run has one, so nothing shows the
+        page changed, and it cannot be a finding change's cause.
     """
 
     change_class: ChangeClass
     reasons: tuple[str, ...]
     hashes: tuple[str, ...] = ()
     fields: tuple[FieldChange, ...] = ()
+    shown: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -246,8 +267,9 @@ def _choose(
     :param before: The earlier run's id, or ``None``.
     :param after: The later run's id, or ``None``.
     :return: The earlier run and the later run.
-    :raises DiffError: If fewer than two runs audited the URL, or a run given
-        did not audit it (a usage error, naming the runs that did).
+    :raises DiffError: If fewer than two runs audited the URL, or, as a
+        usage error naming the runs that did, a run given did not audit it, or
+        ``before`` is not stored before ``after``.
     """
     wanted = normalize_url(url)
     with_url = [view for view in views if wanted in view.subjects()]
@@ -262,6 +284,13 @@ def _choose(
         raise DiffError(f"fewer than two stored runs audited {url}: {', '.join(ids) or 'none'}")
     by_id = {view.run_id: view for view in with_url}
     if before is not None and after is not None:
+        if ids.index(before) >= ids.index(after):
+            raise DiffError(
+                f"run {before} must be stored before run {after}: --from names the earlier "
+                f"of two different runs; the runs that audited {url}, oldest first: "
+                + ", ".join(ids),
+                usage=True,
+            )
         return by_id[before], by_id[after]
     if after is not None:
         earlier = [view for view in with_url[: ids.index(after)]]
@@ -316,7 +345,7 @@ def diff_views(
         url=url,
         before=before,
         after=after,
-        classifier_version=classifier_version(),
+        classifier_version=f"{HISTORY_VERSION}+h{rules.version}",
         page_change=page,
         finding_changes=_finding_changes(before, after, url, page),
     )
@@ -451,7 +480,18 @@ def _page_change(
         )
     checker = _checker_reasons(before, after, first, second)
     if checker:
+        if first is not None and second is not None and not hashes:
+            checker.append("no snapshot hash changed")
         return PageChange(change_class=ChangeClass.CHECKER, reasons=tuple(checker), hashes=hashes)
+    if first is None and second is None:
+        return PageChange(
+            change_class=ChangeClass.UNCLASSIFIED,
+            reasons=(
+                f"runs {before.run_id} and {after.run_id} both have no snapshot of the page "
+                "(it was not read whole in either), so whether it changed cannot be determined",
+            ),
+            shown=False,
+        )
     if first is None or second is None:
         missing = before.run_id if first is None else after.run_id
         return PageChange(
@@ -477,10 +517,10 @@ def _page_change(
             hashes=hashes,
             fields=evidence,
         )
-    classes: dict[ChangeClass, str] = {}
+    classes: dict[ChangeClass, list[str]] = {}
     fields: tuple[FieldChange, ...] = ()
     if "content_sha256" in hashes:
-        classes[ChangeClass.AUTHOR_CONTENT] = "content_sha256 changed: the article body's text"
+        classes[ChangeClass.AUTHOR_CONTENT] = ["content_sha256 changed: the article body's text"]
     if "head_sha256" in hashes:
         if not isinstance(first.get("head_fields"), list) or not isinstance(
             second.get("head_fields"), list
@@ -491,6 +531,14 @@ def _page_change(
                 hashes=hashes,
             )
         site, fields = _field_changes(first, second, control)
+        if not fields:
+            return PageChange(
+                change_class=ChangeClass.UNCLASSIFIED,
+                reasons=(
+                    "head_sha256 changed, but no head field did, so the change cannot be placed",
+                ),
+                hashes=hashes,
+            )
         unknown = [f.name for f in fields if f.control is Actor.UNKNOWN]
         if unknown:
             return PageChange(
@@ -503,23 +551,42 @@ def _page_change(
                 fields=fields,
             )
         if any(f.control is Actor.AUTHOR for f in fields):
-            classes[ChangeClass.AUTHOR_METADATA] = "head fields the author controls changed"
+            classes[ChangeClass.AUTHOR_METADATA] = ["head fields the author controls changed"]
         if any(f.control is Actor.PLATFORM for f in fields):
-            classes[ChangeClass.PLATFORM_RENDERING] = "head fields the platform controls changed"
+            classes[ChangeClass.PLATFORM_RENDERING] = ["head fields the platform controls changed"]
     if "frame_sha256" in hashes:
-        classes.setdefault(
-            ChangeClass.PLATFORM_RENDERING, "frame_sha256 changed: the page around the article"
+        site = site_of(str(second.get("extractor_id")), str(second.get("extractor_selection")))
+        frame_class = _FRAME_CLASS.get(site)
+        if frame_class is None:
+            return PageChange(
+                change_class=ChangeClass.UNCLASSIFIED,
+                reasons=(
+                    f"frame_sha256 changed, and who controls the frame of {site} pages is unknown",
+                ),
+                hashes=hashes,
+                fields=fields,
+            )
+        if frame_class is ChangeClass.AUTHOR_FRAME and ChangeClass.AUTHOR_METADATA in classes:
+            # One actor controls both (Session 6e): the metadata is evidence, not a class.
+            classes[ChangeClass.AUTHOR_FRAME] = classes.pop(ChangeClass.AUTHOR_METADATA)
+        classes.setdefault(frame_class, []).append(
+            "frame_sha256 changed: the page around the article"
         )
     if len(classes) > 1:
         names = ", ".join(sorted(classes))
         return PageChange(
             change_class=ChangeClass.UNCLASSIFIED,
-            reasons=(f"more than one class at once ({names})", *classes.values()),
+            reasons=(
+                f"more than one class at once ({names})",
+                *(reason for reasons in classes.values() for reason in reasons),
+            ),
             hashes=hashes,
             fields=fields,
         )
-    ((change_class, reason),) = classes.items()
-    return PageChange(change_class=change_class, reasons=(reason,), hashes=hashes, fields=fields)
+    ((change_class, reasons),) = classes.items()
+    return PageChange(
+        change_class=change_class, reasons=tuple(reasons), hashes=hashes, fields=fields
+    )
 
 
 _RECEIPT_WORDS = {
@@ -544,33 +611,81 @@ def _evidence_receipts(finding: Record | None) -> list[str]:
     ]
 
 
+@dataclass(frozen=True, kw_only=True)
+class _Cited:
+    """A resource a finding's evidence names, and the receipts it cites in each run.
+
+    :param requested: The resource's URL, as requested.
+    :param before: The receipt ids cited in the earlier run, in order.
+    :param after: The receipt ids cited in the later run, in order.
+    """
+
+    requested: str
+    before: tuple[str, ...] = ()
+    after: tuple[str, ...] = ()
+
+
+def _compared_receipt(view: RunView, url: str, cited: tuple[str, ...]) -> Record | None:
+    """Choose the receipt of a resource to compare in one run.
+
+    :param view: The run.
+    :param url: The resource's URL, normalized.
+    :param cited: The receipts the finding cites in that run.
+    :return: The last cited receipt; if none is cited (the finding is absent
+        from that run), the run's last receipt of the URL; ``None`` if the
+        run never fetched it.
+    """
+    if cited:
+        return view.receipts[cited[-1]]
+    ids = _receipts_for(view, url)
+    return view.receipts[ids[-1]] if ids else None
+
+
+def _receipt_value(receipt: Record, name: str) -> object:
+    """Read a compared receipt field, a ``304`` that validated a cached ``200`` as that ``200``.
+
+    The fetcher caches only ``200`` responses and records a ``304`` with the
+    cached body's hash, so a ``304`` with a body hash is the same response,
+    revalidated, and the body hash says whether it is the same body.
+
+    :param receipt: The receipt record.
+    :param name: The field, one of :data:`RECEIPT_FIELDS`.
+    :return: The value compared.
+    """
+    value = receipt.get(name)
+    if name == "status_code" and value == 304 and receipt.get("body_sha256"):
+        return 200
+    return value
+
+
 def _resource_change(
-    before: RunView, after: RunView, resources: Mapping[str, str]
-) -> tuple[str, str] | None:
-    """Find a resource whose receipt differs between the runs.
+    before: RunView, after: RunView, url: str, cited: _Cited
+) -> tuple[bool, str] | None:
+    """Say whether a resource's receipt differs between the runs.
 
     :param before: The earlier run.
     :param after: The later run.
-    :param resources: The resources' URLs as requested, by normalized URL.
-    :return: The first resource that changed (as requested) and what
-        changed, or ``None``.
+    :param url: The resource's URL, normalized.
+    :param cited: What the finding cites of it.
+    :return: ``(True, what changed)`` for a shown change, ``(False, why not)``
+        when it was fetched in only one run (nothing to compare), or ``None``
+        when the receipts compared are the same.
     """
-    for resource, requested in resources.items():
-        old_ids, new_ids = _receipts_for(before, resource), _receipts_for(after, resource)
-        if not old_ids or not new_ids:
-            missing = before.run_id if not old_ids else after.run_id
-            return requested, f"it was not fetched in run {missing}"
-        old, new = before.receipts[old_ids[-1]], after.receipts[new_ids[-1]]
-        for name in RECEIPT_FIELDS:
-            if old.get(name) != new.get(name):
-                word = _RECEIPT_WORDS[name]
-                return requested, f"its {word} changed ({old.get(name)} to {new.get(name)})"
+    old = _compared_receipt(before, url, cited.before)
+    new = _compared_receipt(after, url, cited.after)
+    if old is None or new is None:
+        missing = before.run_id if old is None else after.run_id
+        return False, f"the resource {cited.requested} was not fetched in run {missing}"
+    for name in RECEIPT_FIELDS:
+        if _receipt_value(old, name) != _receipt_value(new, name):
+            word = _RECEIPT_WORDS[name]
+            return True, f"its {word} changed ({old.get(name)} to {new.get(name)})"
     return None
 
 
 def _evidence_sources(
     before: RunView, after: RunView, url: str, old: Record | None, new: Record | None
-) -> tuple[bool, dict[str, str]]:
+) -> tuple[bool, dict[str, _Cited]]:
     """Sort a finding's evidence into the page's own receipts and other resources.
 
     :param before: The earlier run.
@@ -578,18 +693,24 @@ def _evidence_sources(
     :param url: The page's URL, normalized.
     :param old: The finding in the earlier run, or ``None``.
     :param new: The finding in the later run, or ``None``.
-    :return: Whether any evidence is from the page, and the other resources'
-        URLs as requested, by normalized URL.
+    :return: Whether any evidence is from the page, and the other resources,
+        by normalized URL, with the receipts cited in each run.
     """
     from_page = False
-    resources: dict[str, str] = {}
-    for view, finding in ((before, old), (after, new)):
+    resources: dict[str, _Cited] = {}
+    for earlier, view, finding in ((True, before, old), (False, after, new)):
         for rid in _evidence_receipts(finding):
             requested = view.receipts.get(rid, {}).get("requested_url")
             if _same_url(requested, url):
                 from_page = True
             elif isinstance(requested, str) and requested:
-                resources.setdefault(normalize_url(requested), requested)
+                key = normalize_url(requested)
+                cited = resources.get(key, _Cited(requested=requested))
+                if earlier:
+                    cited = dataclasses.replace(cited, before=(*cited.before, rid))
+                else:
+                    cited = dataclasses.replace(cited, after=(*cited.after, rid))
+                resources[key] = cited
     return from_page, resources
 
 
@@ -603,6 +724,9 @@ def _cause(
 ) -> tuple[Cause, str, ChangeClass | None, str | None]:
     """Say why a finding changed.
 
+    The cause must be shown: a change is attributed to the page or to a
+    resource only when exactly one of them is shown to have changed.
+
     :param before: The earlier run.
     :param after: The later run.
     :param url: The page's URL, normalized.
@@ -612,8 +736,12 @@ def _cause(
     :return: The cause, its detail, the page class for ``PAGE``, and the
         resource for ``RESOURCE``.
     """
-    if before.record.get("classifier_version") != after.record.get("classifier_version"):
-        return Cause.CHECKER, "the classifier version changed between the runs", None, None
+    for name, what in (
+        ("classifier_version", "classifier version"),
+        ("cernis_version", "Cernis version"),
+    ):
+        if before.record.get(name) != after.record.get(name):
+            return Cause.CHECKER, f"the {what} changed between the runs", None, None
     present = new if new is not None else old
     assert present is not None
     if old is not None and new is not None:
@@ -630,13 +758,40 @@ def _cause(
         if seen and present.get("check_version") not in seen:
             return Cause.CHECKER, "the check's version differs between the runs", None, None
     from_page, resources = _evidence_sources(before, after, url, old, new)
-    changed = _resource_change(before, after, resources)
-    if changed is not None:
-        resource, what = changed
-        return Cause.RESOURCE, f"the resource {resource} changed: {what}", None, resource
-    if from_page and page is not None:
+    if from_page and page is not None and page.change_class is ChangeClass.CHECKER:
+        detail = "from the page, whose extractor changed: " + "; ".join(page.reasons)
+        return Cause.CHECKER, detail, None, None
+    shown: list[tuple[Cause, str, ChangeClass | None, str | None]] = []
+    if from_page and page is not None and page.shown:
         detail = f"from the page itself, which changed ({page.change_class})"
-        return Cause.PAGE, detail, page.change_class, None
+        shown.append((Cause.PAGE, detail, page.change_class, None))
+    unfetched: list[str] = []
+    for resource, cited in resources.items():
+        change = _resource_change(before, after, resource, cited)
+        if change is None:
+            continue
+        is_shown, what = change
+        if is_shown:
+            detail = f"the resource {cited.requested} changed: {what}"
+            shown.append((Cause.RESOURCE, detail, None, cited.requested))
+        else:
+            unfetched.append(what)
+    if len(shown) == 1:
+        return shown[0]
+    if shown:
+        named = "; ".join(detail for _, detail, _, _ in shown)
+        return (
+            Cause.UNKNOWN,
+            f"more than one change is shown, so none is the cause: {named}",
+            None,
+            None,
+        )
+    if unfetched:
+        detail = (
+            "; ".join(unfetched)
+            + ", so it was fetched in only one run and nothing shows it changed"
+        )
+        return Cause.UNKNOWN, detail, None, None
     if resources:
         detail = "the resources it rests on have the same receipts in both runs"
         return Cause.UNKNOWN, detail, None, None
@@ -716,7 +871,9 @@ def _follow_based_on(
     """Give a recommendation whose cause is unknown the cause of a finding it rests on.
 
     A recommendation carries no evidence of its own, only ``based_on``, so its
-    cause is the cause of the change in an observed finding it is based on.
+    cause is the cause of the changes in the findings it is based on, when
+    they all share one shown cause. Bases with different causes leave it
+    ``UNKNOWN``, naming them; one is never chosen by list order.
 
     :param before: The earlier run.
     :param after: The later run.
@@ -734,17 +891,25 @@ def _follow_based_on(
         based = present.get("based_on") if present is not None else None
         view = after if change.after is not None else before
         if change.cause is Cause.UNKNOWN and isinstance(based, list):
-            for finding_id in based:
-                basis = by_key.get(keys[view.run_id].get(str(finding_id), ""))
-                if basis is not None and basis.cause is not Cause.UNKNOWN:
-                    change = dataclasses.replace(
-                        change,
-                        cause=basis.cause,
-                        detail=f"it rests on {basis.check_id}, whose cause is: {basis.detail}",
-                        page_class=basis.page_class,
-                        resource_url=basis.resource_url,
-                    )
-                    break
+            bases = [
+                basis
+                for finding_id in based
+                if (basis := by_key.get(keys[view.run_id].get(str(finding_id), ""))) is not None
+            ]
+            causes = {(b.cause, b.page_class, b.resource_url) for b in bases}
+            if len(causes) == 1 and bases[0].cause is not Cause.UNKNOWN:
+                basis = bases[0]
+                change = dataclasses.replace(
+                    change,
+                    cause=basis.cause,
+                    detail=f"it rests on {basis.check_id}, whose cause is: {basis.detail}",
+                    page_class=basis.page_class,
+                    resource_url=basis.resource_url,
+                )
+            elif len(causes) > 1:
+                named = "; ".join(f"{b.check_id} ({b.cause})" for b in bases)
+                detail = f"it rests on changes with different causes: {named}"
+                change = dataclasses.replace(change, detail=detail)
         followed.append(change)
     return followed
 
