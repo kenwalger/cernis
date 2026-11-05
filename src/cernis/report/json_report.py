@@ -86,6 +86,9 @@ def snapshot_as_dict(snapshot: Snapshot) -> dict[str, object]:
         "content_sha256": snapshot.content_sha256,
         "head_sha256": snapshot.head_sha256,
         "frame_sha256": snapshot.frame_sha256,
+        "head_fields": None
+        if snapshot.head_fields is None
+        else [list(pair) for pair in snapshot.head_fields],
     }
 
 

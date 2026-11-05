@@ -12,7 +12,7 @@ import pytest
 from parse_support import DEV_URL, WORDPRESS_URL, fixture, receipt_for
 from selectolax.lexbor import LexborHTMLParser
 
-from cernis.model import ErrorKind, ExtractorSelection, Snapshot
+from cernis.model import ErrorKind, ExtractorSelection, ModelError, Snapshot, head_hash
 from cernis.parse import (
     NORMALIZATION_VERSION,
     SiteType,
@@ -320,12 +320,65 @@ def test_the_hashes_of_a_fixture_are_pinned() -> None:
     """Any change to the normalization rules must bump NORMALIZATION_VERSION and these pins."""
     snapshot = snap(fixture("dev-article"), DEV_URL)
 
-    assert NORMALIZATION_VERSION == "1"
-    assert (snapshot.content_sha256, snapshot.head_sha256, snapshot.frame_sha256) == (
+    # Version 2 (Session 6c): the head hash is of the per-field values.
+    assert NORMALIZATION_VERSION == "2"
+    assert (snapshot.content_sha256, snapshot.frame_sha256) == (
         "aee4cd69e2100ae79104d70f6d9a27d936266149ba2accabd8c5d20fd69a659e",
-        "66984af10743c8f50832ed06cc679014f30f3da0c4f64cf2a38e471b7b95c002",
         "a7d26c8ffb8b6904420e6b485b4bb71ed059263b73fddfcd55c418417a3fa2d4",
     )
+    assert snapshot.head_sha256 == head_hash(snapshot.head_fields or ())
+
+
+# The head's fields (Session 6c)
+
+
+def test_the_head_fields_are_kept_by_name_and_sorted() -> None:
+    """Canonical, each meta and og:* property, lang, title, and each JSON-LD block's hash."""
+    fields = snap(fixture("dev-article"), DEV_URL).head_fields
+
+    assert fields is not None
+    names = [name for name, _ in fields]
+    assert names == sorted(names)
+    assert {"canonical", "lang", "title", "meta:property:og:title", "json-ld"} <= set(names)
+    assert all(isinstance(value, str) for _, value in fields)
+    json_ld = [value for name, value in fields if name == "json-ld"]
+    assert json_ld
+    assert all(len(value) == 64 for value in json_ld)
+
+
+def test_the_head_hash_is_computed_from_exactly_the_head_fields() -> None:
+    """The two can never disagree: the hash is the fields' hash, for every fixture."""
+    for name, url in (("dev-article", DEV_URL), ("wordpress-entry", WORDPRESS_URL)):
+        snapshot = snap(fixture(name), url)
+        assert snapshot.head_fields is not None
+        assert snapshot.head_sha256 == head_hash(snapshot.head_fields)
+
+
+def test_a_snapshot_whose_head_fields_disagree_with_its_hash_is_refused() -> None:
+    """The model enforces the agreement, so a stored snapshot cannot hold both, differing."""
+    snapshot = snap(fixture("dev-article"), DEV_URL)
+    other = (("title", "something else"),)
+
+    with pytest.raises(ModelError, match="head_fields"):
+        dataclasses.replace(snapshot, head_fields=other)
+
+
+def test_a_snapshot_may_lack_head_fields() -> None:
+    """Snapshots stored before Session 6c have only the hash; they are still valid."""
+    snapshot = snap(fixture("dev-article"), DEV_URL)
+
+    assert dataclasses.replace(snapshot, head_fields=None).head_fields is None
+
+
+def test_a_missing_lang_and_an_empty_lang_are_different_fields() -> None:
+    """No lang attribute leaves out the field; an empty one is a value."""
+    absent = snap(b"<html><head><title>t</title></head><body></body></html>").head_fields
+    empty = snap(b"<html lang=''><head><title>t</title></head><body></body></html>").head_fields
+
+    assert absent is not None
+    assert empty is not None
+    assert "lang" not in dict(absent)
+    assert dict(empty)["lang"] == ""
 
 
 # What a snapshot is never made from
@@ -390,4 +443,4 @@ def test_share_buttons_do_not_change_the_wordpress_content_hash() -> None:
     second = build_snapshot(receipt_for(shared), shared, site=SiteType.WORDPRESS)
 
     assert first.content_sha256 == second.content_sha256
-    assert first.extractor_version == "2+n1"
+    assert first.extractor_version == "2+n2"

@@ -20,6 +20,17 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
   reported, says so, and exits with status 1.
 - `cernis runs`, `cernis history <url>`, and `cernis store verify
   [--expected-tip SEQUENCE:HASH]`.
+- `cernis diff <url> [--from RUN] [--to RUN] [--format md|json]` (Session 6c):
+  the page change between two stored runs, classified as `CHECKER`,
+  `AUTHOR_CONTENT`, `AUTHOR_METADATA`, `PLATFORM_RENDERING`, or `UNCLASSIFIED`,
+  with its evidence, and each finding change by key, with a cause
+  (`CHECKER`, `PAGE`, `RESOURCE`, or `UNKNOWN`).
+- Snapshots keep their head fields as sorted (name, value) pairs, and
+  `head_sha256` is their hash (normalization version 2, so extractor versions
+  read `+n2`).
+- `src/cernis/data/head_fields.toml`: who controls each head field, by site
+  type, with sources; its version is part of the classifier version, which
+  every run record now carries.
 - Each run record keeps `anchor_status` (`verified`, `missing`, `unreadable`,
   `behind`, or `empty`), so a run that started without a usable anchor stays
   on record in the chain; `cernis runs` and `cernis store verify` show it.
@@ -152,7 +163,7 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 - robots.txt matching moved from `urllib.robotparser`, whose answers differ
   between Python versions, to Cernis's own RFC 9309 matcher.
 - The version is read from the package metadata.
-- DESIGN.md went from draft 2 to draft 2.10; claims C-1 and C-3 have results
+- DESIGN.md went from draft 2 to draft 2.12; claims C-1 and C-3 have results
   (section 8), and C-1b is proposed.
 - robots.txt reading is version 2 (`epi.robots.access` 1+c1+m2): only the
   first 500 KiB are parsed, a cut-off body keeps lines ended by CR, and a

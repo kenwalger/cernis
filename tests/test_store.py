@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from store_support import PAGE, START, make_run
 
+from cernis.history.fields import classifier_version
 from cernis.model import Run
 from cernis.report.json_report import section_counts
 from cernis.store import (
@@ -282,3 +283,10 @@ def make_run_stub(run_id: str) -> Run:
         id = run_id
 
     return Stub()  # type: ignore[return-value]
+
+
+def test_the_run_record_names_the_classifier_version(tmp_path: Path) -> None:
+    """A classifier change between two runs is then a CHECKER change in their diff."""
+    record = json.loads(run_entries(make_run(tmp_path), anchor_status="empty")[-1].content)
+
+    assert record["record"]["classifier_version"] == classifier_version()

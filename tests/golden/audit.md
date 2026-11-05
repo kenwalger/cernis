@@ -6,8 +6,8 @@ Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.ab
 
 Subjects:
 
-- https://dev.to/example-author/a-synthetic-post-1a2b: read whole (receipt r-002); extractor dev.article 1+n1, host
-- https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 2+n1, declared
+- https://dev.to/example-author/a-synthetic-post-1a2b: read whole (receipt r-002); extractor dev.article 1+n2, host
+- https://blog.example.com/two-canonicals/: read whole (receipt r-004); extractor wordpress.entry 2+n2, declared
 - https://blog.example.com/gone/: not read (FETCH_FAILED)
 
 ## Summary

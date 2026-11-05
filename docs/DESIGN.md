@@ -1,6 +1,6 @@
 # Cernis: Design Note and Plan of Attack
 
-**Status:** Draft 2.11 (2026-11-04). Draft 2.11 records Session 6b: C-5 falsified and the gaps fixed in the SDK (sovereign-sdk-ledger 2.0.0), claim C-5b stated with its falsifiers, and the receipt ledger (section 5): what each run appends, the field mapping, idempotency keys, the tip anchor, and what a failed write does. Draft 2.10 records Session 6a: a time budget for a whole fetch (finding D33), and the finding that sovereign-sdk-ledger 1.3.0 has no public way to read entries back, which stopped the store (section 8, C-5, pending the Owner's decision). Draft 2.9 records Session 5e: the fixes from the tier comparison (`docs/experiments/2026-11-tier-comparison.md`): more refused address ranges and IPv6 translation forms, a bounded DNS lookup, robots.txt read to 500 KiB, and fragments never requested. Draft 2.8 records Session 5d: the results of claims C-1 and C-3 from the first full audit, C-1b proposed, principles 9 and 10, and Phases 2 to 4 marked done. Draft 2.7 recorded Session 5c: the claim numbers fixed in section 8, `wordpress.entry` version 2 (share widgets left out of the article body), a whole-origin `[[site]]` prefix as one sitemap section, site-level findings (`epi.og.image.shared`) and the report's Site section, and the run summary (counts of `AUTHOR` defects per article, for C-1). Draft 2.6 recorded Session 5b: `peri.robots.directives`, `epi.robots.access` with a versioned AI crawler list, `epi.sitemap.listed`, `epi.links.resolve` with its limits, the `LIMIT_REACHED` reason code (ADR-001 amendment 2), the sitemap and DEV user URL sources, `copies` in the pair map, and `cernis pairs --from-dev-user`. Draft 2.5 recorded Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
+**Status:** Draft 2.12 (2026-11-05). Draft 2.12 records Session 6c: snapshots keep their head fields (normalization version 2), the head field control file, change classification and its causes (section 5), `cernis diff`, and claim C-2's fixed sample (section 8). Draft 2.11 records Session 6b: C-5 falsified and the gaps fixed in the SDK (sovereign-sdk-ledger 2.0.0), claim C-5b stated with its falsifiers, and the receipt ledger (section 5): what each run appends, the field mapping, idempotency keys, the tip anchor, and what a failed write does. Draft 2.10 records Session 6a: a time budget for a whole fetch (finding D33), and the finding that sovereign-sdk-ledger 1.3.0 has no public way to read entries back, which stopped the store (section 8, C-5, pending the Owner's decision). Draft 2.9 records Session 5e: the fixes from the tier comparison (`docs/experiments/2026-11-tier-comparison.md`): more refused address ranges and IPv6 translation forms, a bounded DNS lookup, robots.txt read to 500 KiB, and fragments never requested. Draft 2.8 records Session 5d: the results of claims C-1 and C-3 from the first full audit, C-1b proposed, principles 9 and 10, and Phases 2 to 4 marked done. Draft 2.7 recorded Session 5c: the claim numbers fixed in section 8, `wordpress.entry` version 2 (share widgets left out of the article body), a whole-origin `[[site]]` prefix as one sitemap section, site-level findings (`epi.og.image.shared`) and the report's Site section, and the run summary (counts of `AUTHOR` defects per article, for C-1). Draft 2.6 recorded Session 5b: `peri.robots.directives`, `epi.robots.access` with a versioned AI crawler list, `epi.sitemap.listed`, `epi.links.resolve` with its limits, the `LIMIT_REACHED` reason code (ADR-001 amendment 2), the sitemap and DEV user URL sources, `copies` in the pair map, and `cernis pairs --from-dev-user`. Draft 2.5 recorded Session 5a: the `owned` site type, the pair commands and the pair check, canonical and og:image resolution, one fetch per distinct URL per run, and the Open Graph citation for `peri.og.url_matches_canonical`. Draft 2.4 added dot-segment removal to URL equivalence, and declared site types for extractor selection (Session 4a). Draft 2.3 added the `ADDRESS_REFUSED` error kind and reason code from Session 3b, and corrects the stack list. Draft 2.2 recorded the Session 3 decisions: receipts on failure (ADR-004), one receipt per attempt, truncated bodies (ADR-003), a Cernis-owned RFC 9309 matcher, 429 on robots.txt, and refusing non-public addresses. Draft 2.1 added key normalization (Unicode NFC, URL targets). Draft 2 answered the seven issues raised in Session 1: what NOT_DETERMINABLE must record, `based_on` in reports, a Snapshot for history, stable finding keys, rate limiting and fetch errors, a URL comparison rule, and where fixtures belong.
 **Owner:** Ken W. Alger
 **Repository:** `kenwalger/cernis` (to be created)
 **Package:** `cernis` on PyPI (to be reserved with v0.0.1)
@@ -158,8 +158,11 @@ Snapshot
   extractor_id       e.g. "dev.article" or "wordpress.entry"
   extractor_version
   content_sha256     normalized text of the article body only (None if not found)
-  head_sha256        normalized, sorted metadata from <head>: canonical, meta, og:*,
-                     JSON-LD, lang, title
+  head_sha256        the hash of head_fields, so the two can never disagree
+  head_fields        normalized metadata from <head>, as sorted (name, value) pairs:
+                     lang, title, canonical, meta:<attribute>:<key> (meta:name:description,
+                     meta:property:og:title), meta:charset, and json-ld (each block's
+                     hash); absent from snapshots stored before Session 6c
   frame_sha256       the rest of the page, normalized (navigation, footer, template)
 ```
 
@@ -245,6 +248,37 @@ Each audit run is appended to a tamper-evident ledger. Comparing two runs of the
 | `UNCLASSIFIED` | More than one of the above at once, a missing `content_sha256`, or evidence that does not separate them |
 
 A finding change is attributed to the page change of the same run pair, so a report can say "this defect appeared after a `PLATFORM_RENDERING` change," which tells the author it is not their doing.
+
+**Matching (Session 6c).** Runs are compared by normalized subject URL, and findings by `key`, never by finding id or receipt id, which differ in every run. A page's snapshot in a run is the one taken from its last successful receipt in that run. A page with no snapshot in either run is `UNCLASSIFIED`, with the reason.
+
+**Who controls each head field** is in `src/cernis/data/head_fields.toml` (decision 2 of Session 6c), by site type:
+
+- `wordpress` and `owned`: every field `AUTHOR`.
+- `generic`: every field `UNKNOWN`.
+- `dev`: the fields the front matter sets are `AUTHOR`; the fields DEV generates are `PLATFORM`; a field that combines the two, or that nothing settles, is `UNKNOWN`. Each entry names its source: DEV's editor guide, or the real page.
+
+The file's version is part of the classifier's version, `<history version>+h<file version>` (`1+h1`). That version is recorded in every run record and every diff, so a change to the file is a `CHECKER` change. A snapshot's site type comes from its extractor: `dev.article` is `dev`, `wordpress.entry` is `wordpress`, and the generic extractor is `owned` when a declaration or a prefix chose it, else `generic`.
+
+**The classes, as applied:**
+
+- `CHECKER`: the Cernis version, the classifier version, or the extractor id or version differs. It is checked first.
+- `AUTHOR_CONTENT`: `content_sha256` changed.
+- `AUTHOR_METADATA`: only `AUTHOR` head fields changed.
+- `PLATFORM_RENDERING`: content unchanged, and only `frame_sha256` or `PLATFORM` head fields changed.
+- `UNCLASSIFIED`: anything else, including any `UNKNOWN` field, a missing `content_sha256`, more than one class at once, or a head change involving a snapshot without head fields.
+
+Each page change lists its evidence: the hashes that changed, and the head fields that changed, by name, with their control.
+
+**Finding changes** are a key that appears, disappears, or changes `status`, `defect`, `reason_code`, or evidence values. Evidence is compared on its locations and values only, never on receipt ids or fetch times; otherwise every run would differ from every other. A key whose `check_version` differs is a `CHECKER` change, whatever else changed.
+
+**The cause of a finding change** extends the attribution rule above (decision 3 of Session 6c). The five page classes are unchanged.
+
+- `CHECKER`: the check version or the classifier version differs.
+- `PAGE`: the finding's evidence comes from the page's own receipt. It is attributed to the page's change for the run pair, and carries its class. If the page did not change, the cause is `UNKNOWN`.
+- `RESOURCE`: the evidence comes from another receipt: robots.txt, a sitemap, a linked URL, an image, or a canonical. The resource's URL is named, with what changed in its receipt between the runs: status code, final URL, body hash, or error kind (or that it was fetched in only one run). If the resource's receipts are identical in both runs, the cause is `UNKNOWN`, not `RESOURCE`.
+- `UNKNOWN`: none of the above can be shown.
+
+A recommendation has no evidence of its own, only `based_on`. If its cause would be `UNKNOWN`, it takes the cause of a finding it is based on.
 
 `UNCLASSIFIED` is the change-tracking equivalent of *non liquet*, and it is a legitimate answer. When the checker changed between runs, Cernis says so first, because otherwise a new check looks like a new problem with the page.
 
@@ -416,8 +450,16 @@ cernis pairs --from-dev-user <username> [--map <file>] [--limit N] [--list-only]
                                      each DEV article whose canonical_url is off dev.to
   every auditing command also takes --max-links-per-page N, --max-links-per-host N,
   and --max-sitemap-documents N
-cernis history <url>
-cernis diff <url> [--from <run-id>] [--to <run-id>]
+  and --store <dir> (the receipt store, default .cernis/store/)
+cernis runs [--format md|json]       the stored runs: id, times, subjects, counts
+cernis history <url> [--format md|json]
+                                     every stored run that audited the URL, its findings
+cernis diff <url> [--from <run-id>] [--to <run-id>] [--format md|json]
+                                     the page change and finding changes between two runs
+                                     (by default the two most recent with the URL); exit 1
+                                     with fewer than two runs or a ledger that fails
+                                     verification, 2 for a run that did not audit the URL
+cernis store verify [--expected-tip SEQUENCE:HASH]
 cernis checks                        list every check with its id, version, and family
 cernis --version
 ```
@@ -500,11 +542,32 @@ The first full audit is run `20261102T204509Z` (Session 5c): `cernis pairs --fro
 | ID | Result | Notes |
 | --- | --- | --- |
 | C-1 | **Falsified** | 0 of 42 audited articles had any `AUTHOR` defect, against a threshold of 10%. Interpretation: the author's cross-posting was correct throughout (every copy names its original, every original names itself, every original is in its sitemap); the defect rule is strict by design (principle 4); and the actionable findings appeared as facts, which C-1 does not count, for example 15 of the 21 originals sharing one `og:image` (`epi.og.image.shared`). No fact was reclassified as a defect after the result (principle 10). |
-| C-2 | Not yet tested | Phase 5 tests it: history, finding keys across runs, and change classification, with 5 back-to-back runs. |
+| C-2 | **Falsified** (2026-11-05, Session 6c) | 20 change events, all page changes; no finding change in any diff. In each of the four consecutive diffs (`20261105T150122Z-62d993` to `20261105T150247Z-80232d`, to `20261105T150409Z-34a37c`, to `20261105T150543Z-7c42ef`, to `20261105T150709Z-bdca80`), each of the five WordPress originals reported, exactly: "Page change: PLATFORM_RENDERING; frame_sha256 changed: the page around the article; Hashes changed: frame_sha256". The five DEV copies reported "No changes between these runs" in every diff. See the notes below. |
 | C-3 | **Holds, weakly** | 21 of 21 defects are genuine on the Owner's review. All 21 are one type: `peri.og.url_matches_canonical` on DEV copies, where DEV sets `og:url` (`PLATFORM`). A run with more varied defects is needed before this means much. |
 | C-4 | Not yet tested as a claim | Enforced at every run by `Run` validation (`based_on` must name an `OBSERVED` finding) and by the no-promise test on every template; Phase 6 evaluates it over the full audit's findings. |
 | C-5 | **Falsified** (2026-11-04, Session 6a) | The public API of sovereign-sdk-ledger 1.3.0 was `append_receipt`, `verify_ledger_integrity` (a boolean only), and `close`. There was no way to read an entry back; `payload_hash` was `UNIQUE`, so identical content was refused; and the only way to write an unsigned entry was an empty-string signature. A store that can be written but not read cannot serve history (section 5), so Cernis could not function without an API change. Outcome: the gaps were fixed in the SDK, not worked around in Cernis, and released as sovereign-sdk-ledger 2.0.0 (`docs/SDK-FRICTION.md`, 2026-11-04). |
 | C-5b | **Holds** (2026-11-04, Session 6b) | Every Session 6a item was built on 2.0.0 with no SDK change. Cernis imports only names in `sovereign_ledger.__all__` and never calls `sqlite3.connect` (two tests scan `src/cernis` for both). The package ships no `py.typed`, so Cernis types it with its own stub of the public names; that is type information, not an import of private code. The friction found is logged (`docs/SDK-FRICTION.md`, 2026-11-04, Session 6b). |
+
+### C-2: the result's notes (2026-11-05, Session 6c)
+
+These notes interpret the result; nothing above is reclassified by them (principle 10).
+
+- **What was tested.** Each of the five runs fetched 73 receipts: 72 answered 200 and 1 answered 404, and none answered 304, since each run had a new, empty cache directory. Every page was read whole in every run. The runs were recorded at tips 685, 1170, 1655, 2140, and 2625, and `cernis store verify` reported the 2625 entries verified against the anchor.
+- **Where the changes are.** Only the WordPress originals' `frame_sha256` moved: their article text and head fields were identical in all five runs, and so was every finding. Something in kenwalger.com's page around the article differs from request to request, outside Cernis's volatile-token rules.
+- **What it is cannot be determined from what was kept.** kenwalger.com's responses carry no `ETag` or `Last-Modified`, so Cernis did not cache their bodies, and the ledger keeps hashes, never bodies. Which token changed is therefore not on record.
+- **The DEV copies were stable** across all five runs, including the head fields DEV writes at render time (`head-cached-at`, `last-updated`): DEV served the same rendering throughout the runs.
+
+### C-2: the fixed sample (2026-11-05, Session 6c, before any run)
+
+- **The pages:** five cross-post pairs from the full audit's 21 (run `20261102T204509Z`), ten pages: the Session 6b pair, Views Measure Views (pair 11), and the four most recent others (pairs 1 to 4, newest first in DEV's listing):
+  1. https://www.kenwalger.com/blog/uncategorized/sixty-feet-six-inches-of-october and https://dev.to/kenwalger/sixty-feet-six-inches-of-october-3e00
+  2. https://www.kenwalger.com/blog/ai-engineering/a-message-from-our-founder-laasy/ and https://dev.to/kenwalger/a-message-from-our-founder-on-the-winding-down-of-laasy-467a
+  3. https://www.kenwalger.com/blog/ai-engineering/four-ways-a-test-can-lie/ and https://dev.to/kenwalger/four-ways-a-test-can-lie-to-you-2ibf
+  4. https://www.kenwalger.com/blog/seo-discoverability/your-website-changed-did-the-ai-get-the-memo/ and https://dev.to/kenwalger/your-website-changed-did-the-ai-get-the-memo-2jgc
+  5. https://www.kenwalger.com/blog/writing/views-measure-views-nine-years-writing and https://dev.to/kenwalger/views-measure-views-4co7
+- **The runs:** five, back to back, with `cernis pairs --map <a map of those five pairs>` and kenwalger.com/blog/ declared WordPress by a prefix rule, at the normal politeness settings. Each run uses a new, empty cache directory (`--cache-dir`, a supported option), so every page is fetched whole rather than revalidated; the 200 and 304 counts of each run are reported, so the result says what it tested.
+- **A change event** is any page change or finding change, in any of the four consecutive diffs (1 to 2, 2 to 3, 3 to 4, and 4 to 5) for any of the ten pages, whose class or cause is anything other than `CHECKER`.
+- **C-2 holds** if no change event appears, and is **falsified** otherwise.
 
 ### Proposed
 
@@ -515,6 +578,10 @@ The first full audit is run `20261102T204509Z` (Session 5c): `cernis pairs --fro
 | C-5c | Cernis can sign its ledger entries with sovereign-core keys and verify them later, using only the SDK's public API | *To be written before signing is built* |
 
 C-5c is a possible future claim. Cernis's entries are unsigned for now (section 5, "The receipt ledger", decision 2), so nothing tests it yet.
+
+| C-2b | With a normalization that removes the per-request part of kenwalger.com's frame (a new normalization version, made and recorded for its own reasons first), repeat audits of unchanged pages are stable | *To be written before any run*: as C-2, any change event other than `CHECKER` across 5 back-to-back runs, each with a new cache, of the same ten pages, all made with the new normalization version, after the Owner confirms the pages did not change |
+
+C-2b is **proposed, not fixed**. It cannot be fixed until the per-request part of the frame is identified, which needs two captured bodies of one original (Session 6c, Deferred).
 
 C-1b is **proposed, not fixed**. Its sample size, the rule that selects its authors and articles, and its threshold must be fixed and dated here before any run. Its runs follow principle 9: a small, polite sample of public cross-posts, robots.txt respected, normal pacing.
 
@@ -542,7 +609,7 @@ Each phase is one or more numbered Claude Code sessions, with the usual CLAUDE.m
 | 2 | Fetcher: httpx client, robots.txt for its own user agent, pacing, retry with backoff for 429, cache, receipts with `error_kind` | Done in Session 3. Session 3b adds the SSRF guard, the RFC 9309 matcher, and the overall request deadline. |
 | 3 | Parser and snapshots, the URL comparison function, peritext checks, run assembly (including the `based_on` check), Markdown/JSON reports, synthetic HTML fixtures; evaluate sovereign-sieve | Done in Sessions 4a (parser, snapshots, URL comparison, sovereign-sieve evaluated), 4b (peritext checks, run, reports, `cernis audit`), and 4d (prefix site types, standards defects). |
 | 4 | Epitext checks, including the flagship pair check; URL sources (sitemap, DEV username) | Done in Sessions 5a, 5b, and 5c: `cernis pairs` ran over the 21 most recent cross-posted articles in Session 5c. Session 5a adds the pair check, canonical and og:image resolution, `owned`, `cernis pair`, and `cernis pairs`. Session 5b adds robots access and directives, sitemaps, links, the sitemap and DEV user sources, `copies`, and `cernis pairs --from-dev-user`. |
-| 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass. Session 6a added the whole-fetch budget and stopped at the store (C-5); Session 6b built the ledger store, `cernis runs`, `cernis history`, and `cernis store verify` on sovereign-sdk-ledger 2.0.0 (C-5b holds). The diff and change classification remain. |
+| 5 | Ledger store, history, finding keys across runs, diff, change classification | C-2 stability runs pass. Session 6a added the whole-fetch budget and stopped at the store (C-5); Session 6b built the ledger store, `cernis runs`, `cernis history`, and `cernis store verify` on sovereign-sdk-ledger 2.0.0 (C-5b holds). Session 6c built change classification and `cernis diff`, and ran C-2: falsified (WordPress frames differ per request). C-2b is proposed. |
 | 6 | Fix the *proposed* numbers, run the first full audit, review every defect, evaluate C-1 to C-5 | An evaluation note, and material for an article. Session 5c fixed the numbers (section 8) and ran the first site-wide audit; Session 5d records the results of C-1 (falsified) and C-3 (holds, weakly). C-2, C-4, and C-5 remain. |
 
 A natural first article: *Non Liquet: Building an Auditor That Admits What It Can't See.*

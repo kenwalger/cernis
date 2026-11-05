@@ -2821,20 +2821,116 @@
     {
       "receipt_id": "r-002",
       "extractor_id": "dev.article",
-      "extractor_version": "1+n1",
+      "extractor_version": "1+n2",
       "extractor_selection": "host",
       "content_sha256": "aee4cd69e2100ae79104d70f6d9a27d936266149ba2accabd8c5d20fd69a659e",
-      "head_sha256": "66984af10743c8f50832ed06cc679014f30f3da0c4f64cf2a38e471b7b95c002",
-      "frame_sha256": "a7d26c8ffb8b6904420e6b485b4bb71ed059263b73fddfcd55c418417a3fa2d4"
+      "head_sha256": "843c18eb7e0276f0a04d87b90066dcda8f94c3ebf39c42866318f83a9ad58e4d",
+      "frame_sha256": "a7d26c8ffb8b6904420e6b485b4bb71ed059263b73fddfcd55c418417a3fa2d4",
+      "head_fields": [
+        [
+          "canonical",
+          "https://blog.example.com/2026/10/a-synthetic-post/"
+        ],
+        [
+          "json-ld",
+          "6376f7c3ae2b8f41de4bab3c0e7a6d7c0886ca2c23d077f444f81ce66fc87b35"
+        ],
+        [
+          "lang",
+          "en"
+        ],
+        [
+          "meta:charset",
+          "utf-8"
+        ],
+        [
+          "meta:name:csrf-param",
+          "~"
+        ],
+        [
+          "meta:name:csrf-token",
+          "~"
+        ],
+        [
+          "meta:name:description",
+          "A hand-written page that imitates a DEV article, for Cernis's tests."
+        ],
+        [
+          "meta:name:keywords",
+          "testing, fixtures, synthetic"
+        ],
+        [
+          "meta:name:twitter:card",
+          "summary_large_image"
+        ],
+        [
+          "meta:name:viewport",
+          "width=device-width, initial-scale=1.0"
+        ],
+        [
+          "meta:property:og:description",
+          "A hand-written page that imitates a DEV article."
+        ],
+        [
+          "meta:property:og:image",
+          "https://media.dev.example/cover/synthetic-cover.png"
+        ],
+        [
+          "meta:property:og:site_name",
+          "DEV Community"
+        ],
+        [
+          "meta:property:og:title",
+          "A Synthetic Post About Fixtures"
+        ],
+        [
+          "meta:property:og:type",
+          "article"
+        ],
+        [
+          "meta:property:og:url",
+          "https://dev.to/example-author/a-synthetic-post-1a2b"
+        ],
+        [
+          "title",
+          "A Synthetic Post About Fixtures - DEV Community"
+        ]
+      ]
     },
     {
       "receipt_id": "r-004",
       "extractor_id": "wordpress.entry",
-      "extractor_version": "2+n1",
+      "extractor_version": "2+n2",
       "extractor_selection": "declared",
       "content_sha256": "c1e5cbd5e76a1f306c89ff7758ded12f7d96e673f5125bf85153984cb2238059",
-      "head_sha256": "79a2df5f6d604446deddefb2c26ac3fb9698ee9b0ec89a56cbf2370614dd9571",
-      "frame_sha256": "7d975498ab01c7604eab0212246140a4ecd97f8f5b8e9de983082c4e276d2da4"
+      "head_sha256": "74d6bd38c8c8f85da63fc240806e672c4863dd6fee852cc04fc8930c2e139a82",
+      "frame_sha256": "7d975498ab01c7604eab0212246140a4ecd97f8f5b8e9de983082c4e276d2da4",
+      "head_fields": [
+        [
+          "canonical",
+          "https://blog.example.com/two-canonicals/"
+        ],
+        [
+          "canonical",
+          "https://dev.to/example-author/two-canonicals-5e6f"
+        ],
+        [
+          "lang",
+          "en"
+        ],
+        [
+          "meta:charset",
+          "utf-8"
+        ],
+        [
+          "meta:name:description",
+          "Two canonical links that disagree."
+        ],
+        [
+          "title",
+          "A Post With Two Canonicals"
+        ]
+      ]
     }
   ]
 }

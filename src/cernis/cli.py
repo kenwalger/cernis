@@ -16,6 +16,8 @@ from cernis.checks.links import LinkLimits
 from cernis.checks.registry import CHECKS, CheckSpec
 from cernis.fetch import FetchConfig, Fetcher, FetchError, FetchResult, RobotsDecision
 from cernis.fetch.cache import DEFAULT_CACHE_DIR
+from cernis.history.classify import DiffError, diff_runs
+from cernis.history.report import format_diff_json, format_diff_markdown
 from cernis.model import Receipt, Run, RunSource
 from cernis.pairs import PairMap, PairMapError, load_pair_map
 from cernis.parse import SitePrefix, SiteType
@@ -317,6 +319,22 @@ def build_parser() -> argparse.ArgumentParser:
             "--format", choices=("md", "json"), default="md", help="output format (default: md)"
         )
         _add_store_option(sub)
+    diff = commands.add_parser(
+        "diff",
+        help="compare two stored runs of a URL and classify what changed",
+        description=(
+            "Compare two stored runs that audited the URL (by default the two most "
+            "recent): the page change, classified by who caused it, and each finding "
+            "change, with its cause (DESIGN.md section 5)."
+        ),
+    )
+    diff.add_argument("url", help="the URL, compared after Cernis's URL normalization")
+    diff.add_argument("--from", dest="from_run", metavar="RUN", help="the earlier run's id")
+    diff.add_argument("--to", dest="to_run", metavar="RUN", help="the later run's id")
+    diff.add_argument(
+        "--format", choices=("md", "json"), default="md", help="output format (default: md)"
+    )
+    _add_store_option(diff)
     store = commands.add_parser(
         "store", help="check the receipt store", description="Check the receipt store."
     )
@@ -1090,6 +1108,33 @@ def run_history_command(url: str, store: Path, output_format: str) -> int:
     return 0
 
 
+def run_diff_command(
+    url: str, store: Path, before: str | None, after: str | None, output_format: str
+) -> int:
+    """Compare two stored runs of a URL and print what changed.
+
+    :param url: The URL.
+    :param store: The store directory.
+    :param before: The earlier run's id, or ``None`` for the default.
+    :param after: The later run's id, or ``None`` for the default.
+    :param output_format: ``md`` or ``json``.
+    :return: 0 when the diff was made (whatever it found); 1 when fewer than
+        two runs audited the URL, or the store failed verification or could
+        not be read; 2 when a run given did not audit the URL.
+    """
+    entries = _read_store("diff", store)
+    if entries is None:
+        return 1
+    try:
+        result = diff_runs(entries, url, before=before, after=after)
+    except DiffError as exc:
+        print(f"cernis diff: {exc}", file=sys.stderr)
+        return 2 if exc.usage else 1
+    render = format_diff_json if output_format == "json" else format_diff_markdown
+    sys.stdout.write(render(result))
+    return 0
+
+
 def format_verification(verification: Verification, store: Path, gaps: Sequence[str] = ()) -> str:
     """Render ``cernis store verify``.
 
@@ -1199,6 +1244,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_runs(args.store, args.format)
     if args.command == "history":
         return run_history_command(args.url, args.store, args.format)
+    if args.command == "diff":
+        return run_diff_command(args.url, args.store, args.from_run, args.to_run, args.format)
     if args.command == "store":
         if args.store_command == "verify":
             return run_store_verify(args.store, args.expected_tip)

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from cernis.history.fields import classifier_version
 from cernis.model import Run
 from cernis.report.json_report import (
     finding_as_dict,
@@ -311,6 +312,7 @@ def run_entries(run: Run, *, anchor_status: str) -> list[PreparedEntry]:
         ],
         "counts": section_counts(run),
         "anchor_status": anchor_status,
+        "classifier_version": classifier_version(),
         "entries": {
             "receipt": len(run.receipts),
             "snapshot": len(run.snapshots),

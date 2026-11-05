@@ -10,15 +10,21 @@ whitespace collapsed to one space, Unicode NFC. ``None`` if the extractor
 found no body. Text only: markup, attributes, and link targets inside the
 body are not part of it.
 
-**head_sha256**: the page's metadata, as a sorted list, so element order and
-attribute order do not matter:
+**head_fields** and **head_sha256**: the page's metadata, as sorted
+``(name, value)`` pairs, so element order and attribute order do not matter,
+and ``head_sha256`` is :func:`~cernis.model.head_hash` of exactly those
+pairs (Session 6c, normalization version 2):
 
-- ``lang`` of ``<html>``, and each ``<title>`` in ``<head>`` (normalized text);
-- each ``rel="canonical"`` link's ``href``;
-- each ``meta`` with ``name``, ``property``, ``http-equiv``, or ``charset``:
-  the attribute, the key lowercased, and the content normalized;
-- each JSON-LD block, re-serialized with sorted keys if it parses, or as its
-  normalized raw text if it does not.
+- ``lang``: ``<html lang>``, normalized; no pair when the attribute is absent,
+  so an absent ``lang`` and an empty one differ;
+- ``title``: each ``<title>`` in ``<head>`` (normalized text);
+- ``canonical``: each ``rel="canonical"`` link's ``href``;
+- ``meta:<attribute>:<key>``: each ``meta`` with ``name``, ``property``, or
+  ``http-equiv``, the key lowercased (``meta:property:og:title``), and its
+  content normalized; ``meta:charset`` for a ``charset`` meta;
+- ``json-ld``: each JSON-LD block's SHA-256, of its serialization with sorted
+  keys if it parses (prefixed ``parsed:``), or of its normalized raw text if it
+  does not (prefixed ``unparsed:``).
 
 Canonical, ``meta``, and JSON-LD elements count wherever they are in the
 document, ``<body>`` included, so a metadata change is never lost to the
@@ -64,7 +70,7 @@ from collections.abc import Sequence
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
-from cernis.model import ErrorKind, Receipt, Snapshot
+from cernis.model import ErrorKind, HeadFields, Receipt, Snapshot, head_hash
 from cernis.parse.extractors import (
     SitePrefix,
     SiteType,
@@ -81,8 +87,11 @@ from cernis.parse.html import (
     visible_text,
 )
 
-NORMALIZATION_VERSION = "1"
-"""The version of the normalization rules in this module."""
+NORMALIZATION_VERSION = "2"
+"""The version of the normalization rules in this module.
+
+Version 2 (Session 6c): ``head_sha256`` is the hash of the per-field head
+values, which snapshots now keep; the values compared are the same."""
 
 _URL_ATTRIBUTES = frozenset(
     {"href", "src", "srcset", "action", "poster", "data-src", "data-srcset"}
@@ -139,47 +148,49 @@ def _is_metadata(node: LexborNode) -> bool:
     return False
 
 
-def _head_entries(tree: LexborHTMLParser) -> list[list[str]]:
-    """List the page's metadata for ``head_sha256``.
+def _head_fields(tree: LexborHTMLParser) -> HeadFields:
+    """List the page's metadata, by name, for ``head_fields`` and ``head_sha256``.
 
     :param tree: The parsed document.
-    :return: The entries, sorted.
+    :return: The ``(name, value)`` pairs, sorted.
     """
-    entries: list[list[str]] = []
+    fields: list[tuple[str, str]] = []
     root = tree.css_first("html")
     lang = root.attributes.get("lang") if root is not None else None
-    entries.append(["lang", "" if lang is None else normalize_text(lang), str(lang is None)])
+    if root is not None and "lang" in root.attributes:
+        fields.append(("lang", normalize_text(lang or "")))
     for node in tree.css("title, link, meta, script"):
         if not _is_metadata(node):
             continue
         attributes = node.attributes
         if node.tag == "title":
-            entries.append(["title", normalize_text(node.text(deep=True))])
+            fields.append(("title", normalize_text(node.text(deep=True))))
         elif node.tag == "link":
-            entries.append(["canonical", normalize_text(attributes.get("href") or "")])
+            fields.append(("canonical", normalize_text(attributes.get("href") or "")))
         elif node.tag == "script":
             raw = node.text(deep=True)
             try:
                 value = json.loads(raw)
             except (ValueError, RecursionError):
-                entries.append(["json-ld", "unparsed", normalize_text(raw)])
+                block = "unparsed:" + normalize_text(raw)
             else:
-                serialized = json.dumps(
+                block = "parsed:" + json.dumps(
                     value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
                 )
-                entries.append(["json-ld", "parsed", serialized])
+            fields.append(("json-ld", hashlib.sha256(block.encode("utf-8")).hexdigest()))
         else:
             for attribute in ("name", "property", "http-equiv", "charset"):
                 if attribute in attributes:
                     key = normalize_text(attributes.get(attribute) or "").lower()
                     content = normalize_text(attributes.get("content") or "")
                     if attribute == "charset":
-                        key, content = "", key
-                    elif "csrf" in key:
-                        content = _TOKEN
-                    entries.append(["meta", attribute, key, content])
+                        fields.append(("meta:charset", key))
+                    else:
+                        if "csrf" in key:
+                            content = _TOKEN
+                        fields.append((f"meta:{attribute}:{key}", content))
                     break
-    return sorted(entries)
+    return tuple(sorted(fields))
 
 
 def _attributes(node: LexborNode) -> list[list[str]]:
@@ -271,6 +282,7 @@ def build_snapshot(
     if hashlib.sha256(body).hexdigest() != receipt.body_sha256:
         raise SnapshotError(f"the body given is not the body of receipt {receipt.id}")
     tree, _ = parse_tree(body, receipt.header("content-type"))
+    fields = _head_fields(tree)
     extractor, selection = select_extractor(
         receipt.final_url or receipt.requested_url, site, prefixes
     )
@@ -286,6 +298,7 @@ def build_snapshot(
         extractor_version=f"{extractor.version}+n{NORMALIZATION_VERSION}",
         extractor_selection=selection,
         content_sha256=content,
-        head_sha256=_sha256(_head_entries(tree)),
+        head_sha256=head_hash(fields),
         frame_sha256=_sha256(_frame_tokens(tree, match.node)),
+        head_fields=fields,
     )

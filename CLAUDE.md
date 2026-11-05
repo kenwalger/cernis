@@ -37,7 +37,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **The receipt store is built (session 6b, 2026-11-04).** C-5 falsified; the gaps were fixed in the SDK as sovereign-sdk-ledger 2.0.0. `src/cernis/store/` (ADR-002 amendment 1): the ledger store and an in-memory store behind `ReceiptStore`, `cernis runs`, `cernis history`, and `cernis store verify`; DESIGN.md section 5, "The receipt ledger". Claim C-5b holds. DESIGN.md is at draft 2.11.
 
-**Next:** the history diff and change classification (Phase 5, DESIGN.md section 10), which test C-2. No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**Change classification and `cernis diff` are built (session 6c, 2026-11-05).** Snapshots keep their head fields (normalization version 2); `src/cernis/data/head_fields.toml` says who controls each; `src/cernis/history/` classifies page and finding changes with causes. Claim C-2 is falsified: the five WordPress originals' frames differ per request (20 `PLATFORM_RENDERING` events); C-2b is proposed. DESIGN.md is at draft 2.12.
+
+**Next:** identify the per-request part of kenwalger.com's frame, then fix C-2b's sample and falsifier before any run (DESIGN.md section 8). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 

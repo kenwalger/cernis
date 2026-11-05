@@ -1,10 +1,10 @@
 """Runs for the store tests: real audits of a scripted page, at a chosen time."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fetch_support import Site, make_fetcher, respond
+from fetch_support import Reply, Site, make_fetcher, respond
 
 from cernis.audit import Target, audit
 from cernis.model import Run
@@ -35,7 +35,14 @@ def clock(start: datetime) -> Callable[[], datetime]:
 
 
 def make_run(
-    tmp_path: Path, start: datetime = START, body: bytes = HTML, suffix: str = "000000"
+    tmp_path: Path,
+    start: datetime = START,
+    body: bytes = HTML,
+    suffix: str = "000000",
+    *,
+    url: str = PAGE,
+    site: SiteType | None = SiteType.OWNED,
+    routes: Mapping[str, Reply] | None = None,
 ) -> Run:
     """Audit the page once, starting at ``start``.
 
@@ -47,14 +54,19 @@ def make_run(
     :param start: When the run starts; with ``suffix``, it sets the run id.
     :param body: The page's body.
     :param suffix: The run id's suffix.
+    :param url: The page's URL.
+    :param site: The page's declared site type; ``None`` to detect it from the host.
+    :param routes: More replies, by URL, such as a canonical target's.
     :return: The run.
     """
-    site = Site()
-    site.add(PAGE, respond(200, body, {"content-type": "text/html; charset=utf-8"}))
-    cache = tmp_path / f"cache-{start:%H%M%S}"
-    fetcher = make_fetcher(site, cache, min_interval=0)
+    web = Site()
+    web.add(url, respond(200, body, {"content-type": "text/html; charset=utf-8"}))
+    for route, reply in (routes or {}).items():
+        web.add(route, reply)
+    cache = tmp_path / f"cache-{start:%H%M%S}-{suffix}"
+    fetcher = make_fetcher(web, cache, min_interval=0)
     return audit(
-        [Target(url=PAGE, site=SiteType.OWNED)],
+        [Target(url=url, site=site)],
         fetcher,
         now=clock(start),
         run_suffix=lambda: suffix,

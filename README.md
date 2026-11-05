@@ -126,7 +126,13 @@ bodies are never stored there; they stay in the cache.
 uv run cernis runs                      # every stored run: id, times, subjects, counts
 uv run cernis history <url>             # every stored run that audited the URL, its findings by key
 uv run cernis store verify              # check the whole chain against the anchored tip
+uv run cernis diff <url>                # what changed between its two most recent runs, and why
 ```
+
+`cernis diff` classifies the page change by who caused it (`CHECKER`,
+`AUTHOR_CONTENT`, `AUTHOR_METADATA`, `PLATFORM_RENDERING`, or
+`UNCLASSIFIED`) and gives each finding change a cause (`CHECKER`, `PAGE`,
+`RESOURCE`, or `UNKNOWN`). No changes is a result, and it says so.
 
 ## What it checks today
 

@@ -514,6 +514,20 @@ class Receipt:
         return dict(self.headers).get(name)
 
 
+HeadFields = tuple[tuple[str, str], ...]
+"""A snapshot's head metadata: sorted ``(name, value)`` pairs."""
+
+
+def head_hash(fields: HeadFields) -> str:
+    """Hash a snapshot's head fields, the one way ``head_sha256`` is computed.
+
+    :param fields: The sorted ``(name, value)`` pairs.
+    :return: The SHA-256 of their compact JSON (UTF-8, no ASCII escaping), hex.
+    """
+    payload = json.dumps([list(pair) for pair in fields], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True, kw_only=True)
 class Snapshot:
     """What the parser derived from one receipt, for comparing runs.
@@ -535,7 +549,12 @@ class Snapshot:
         (canonical, meta, og:*, JSON-LD, lang, title).
     :param frame_sha256: SHA-256 of the rest of the page, normalized
         (navigation, footer, template).
-    :raises ModelError: If an identifier is blank or a hash is malformed.
+    :param head_fields: The head metadata ``head_sha256`` is computed from,
+        as sorted ``(name, value)`` pairs (Session 6c); ``None`` for a
+        snapshot stored before them. When present, ``head_sha256`` must be
+        :func:`head_hash` of them, so the two can never disagree.
+    :raises ModelError: If an identifier is blank, a hash is malformed, or
+        the head fields are malformed or disagree with ``head_sha256``.
     """
 
     receipt_id: str
@@ -545,6 +564,7 @@ class Snapshot:
     content_sha256: str | None
     head_sha256: str
     frame_sha256: str
+    head_fields: HeadFields | None = None
 
     def __post_init__(self) -> None:
         """Validate the snapshot; the class docstring lists what raises ModelError."""
@@ -557,6 +577,19 @@ class Snapshot:
             _require_sha256(owner, "content_sha256", self.content_sha256)
         _require_sha256(owner, "head_sha256", self.head_sha256)
         _require_sha256(owner, "frame_sha256", self.frame_sha256)
+        if self.head_fields is not None:
+            fields = self.head_fields
+            if not isinstance(fields, tuple) or not all(
+                isinstance(pair, tuple)
+                and len(pair) == 2
+                and all(isinstance(part, str) for part in pair)
+                for pair in fields
+            ):
+                raise ModelError(f"{owner}: head_fields must be a tuple of (name, value) strings")
+            if list(fields) != sorted(fields):
+                raise ModelError(f"{owner}: head_fields must be sorted")
+            if head_hash(fields) != self.head_sha256:
+                raise ModelError(f"{owner}: head_sha256 is not the hash of head_fields")
 
 
 class RunError(ModelError):

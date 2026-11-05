@@ -315,7 +315,7 @@ def test_audit_prints_a_markdown_report(
     assert out.startswith("# Cernis audit: A Post With Two Canonicals\n")
     assert "## Observed (32)" in out
     assert "## Recommendations (1)" in out
-    assert "extractor wordpress.entry 2+n1, declared" in out
+    assert "extractor wordpress.entry 2+n2, declared" in out
 
 
 def test_audit_writes_json_to_a_file(
@@ -353,7 +353,7 @@ def test_audit_without_a_site_type_uses_host_detection(
     main(["audit", WP_PAGE, "--cache-dir", str(tmp_path)])
 
     out = capsys.readouterr().out
-    assert "extractor generic 1+n1, generic" in out
+    assert "extractor generic 1+n2, generic" in out
     assert "- UNKNOWN · peri.canonical.present" in out
 
 
@@ -414,8 +414,8 @@ def test_audit_reads_site_types_from_a_pair_map(
     main(["audit", WP_PAGE, "--map", str(pair_map), "--site-type", "dev", "--cache-dir", cache])
     overridden = capsys.readouterr().out
 
-    assert "extractor wordpress.entry 2+n1, prefix" in by_prefix
-    assert "extractor dev.article 1+n1, declared" in overridden
+    assert "extractor wordpress.entry 2+n2, prefix" in by_prefix
+    assert "extractor dev.article 1+n2, declared" in overridden
 
 
 def test_audit_uses_a_urls_own_site_in_the_map_over_a_prefix(
@@ -434,7 +434,7 @@ def test_audit_uses_a_urls_own_site_in_the_map_over_a_prefix(
 
     main(["audit", WP_PAGE, "--map", str(pair_map), "--cache-dir", str(tmp_path / "c")])
 
-    assert "extractor dev.article 1+n1, declared" in capsys.readouterr().out
+    assert "extractor dev.article 1+n2, declared" in capsys.readouterr().out
 
 
 def test_audit_refuses_a_bad_pair_map(
@@ -458,7 +458,7 @@ def test_audit_accepts_the_owned_site_type(
     main(["audit", WP_PAGE, "--site-type", "owned", "--cache-dir", str(tmp_path)])
 
     out = capsys.readouterr().out
-    assert "extractor generic 1+n1, declared" in out
+    assert "extractor generic 1+n2, declared" in out
     assert "PLATFORM" not in out
     assert "UNKNOWN" not in out
 
@@ -514,8 +514,8 @@ def test_pair_audits_both_pages_and_the_pair(
     assert f"Copy: {COPY}\nOriginal: {ORIGINAL}\n" in out
     assert f"### Pair: {COPY} (copy of {ORIGINAL})" in out
     assert "epi.pair.canonical" in out
-    assert "extractor wordpress.entry 2+n1, declared" in out
-    assert "extractor dev.article 1+n1, host" in out
+    assert "extractor wordpress.entry 2+n2, declared" in out
+    assert "extractor dev.article 1+n2, host" in out
 
 
 def test_pair_writes_json_with_the_pair(
@@ -577,7 +577,7 @@ def test_pair_applies_a_maps_prefix_rules(
         ]
     )
 
-    assert "extractor wordpress.entry 2+n1, prefix" in capsys.readouterr().out
+    assert "extractor wordpress.entry 2+n2, prefix" in capsys.readouterr().out
 
 
 def test_pairs_audits_every_pair_in_the_map_fetching_each_url_once(
@@ -615,7 +615,7 @@ def test_pairs_audits_every_pair_in_the_map_fetching_each_url_once(
     observed = out.split("## Observed", 1)[1].split("## Recommendations", 1)[0]
     assert observed.count(f"#### Original: {ORIGINAL}") == 1
     assert f"### Pair: {second} (copy of {ORIGINAL})" in out
-    assert "extractor generic 1+n1, declared" in out
+    assert "extractor generic 1+n2, declared" in out
 
 
 def test_pairs_refuses_a_map_with_no_pairs(
