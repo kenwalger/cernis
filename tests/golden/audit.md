@@ -2,7 +2,7 @@
 
 Run: 20261030T120000Z-0a1b2c · Cernis 0.1.0.dev0
 Started: 2026-10-30T12:00:00+00:00 · Finished: 2026-10-30T12:00:01+00:00
-Checks: peri.canonical.present 1 · peri.canonical.single 1 · peri.canonical.absolute 1 · peri.meta.description 1 · peri.og.core 3 · peri.og.url_matches_canonical 2 · peri.lang 2 · peri.jsonld.parses 2 · peri.title 2 · peri.robots.directives 2 · epi.canonical.resolves 1 · epi.og.image.resolves 2 · epi.robots.access 1+c1+m2 · epi.sitemap.listed 1 · epi.links.resolve 1
+Checks: peri.canonical.present 1 · peri.canonical.single 2 · peri.canonical.absolute 2 · peri.meta.description 1 · peri.og.core 4 · peri.og.url_matches_canonical 3 · peri.lang 3 · peri.jsonld.parses 3 · peri.title 2 · peri.robots.directives 2 · epi.canonical.resolves 2 · epi.og.image.resolves 3 · epi.robots.access 1+c1+m2 · epi.sitemap.listed 2 · epi.links.resolve 2
 
 Subjects:
 

@@ -295,6 +295,26 @@ def test_a_url_given_twice_is_audited_once(tmp_path: Path) -> None:
     assert run.subjects == (PAGE,)  # type: ignore[attr-defined]
 
 
+def test_a_target_that_redirects_to_another_target_shares_its_snapshot(tmp_path: Path) -> None:
+    """Session 7's full audit: a mistyped canonical redirected to another declared original.
+
+    The run fetches the page once, so both subjects are read from one receipt;
+    the run keeps one snapshot of that receipt and still audits both subjects.
+    """
+    typo = "https://blog.example.com/two-canonicals/A"
+    site = Site()
+    site.add(typo, redirect(PAGE))
+    site.add(PAGE, respond(200, fixture("two-canonicals"), HTML))
+
+    run = run_on(site, tmp_path, Target(url=typo), Target(url=PAGE))
+
+    assert run.subjects == (typo, PAGE)  # type: ignore[attr-defined]
+    assert len(run.snapshots) == 1  # type: ignore[attr-defined]
+    assert site.urls().count(PAGE) == 1
+    subjects = {f.subject_url for f in run.findings}  # type: ignore[attr-defined]
+    assert subjects == {typo, PAGE}
+
+
 def test_several_pages_share_one_run_and_one_robots_receipt(tmp_path: Path) -> None:
     """robots.txt is fetched once per origin per run, and the run holds it once."""
     site = Site()

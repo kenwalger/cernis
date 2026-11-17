@@ -624,7 +624,9 @@ def run_checks(name: str) -> tuple[list[Finding], list[Finding]]:
     findings = peritext_findings(
         page, receipt, subject_url=url, site=effective_site(url, site), new_id=new_id
     )
-    advice = recommendations_for(findings, page=page, receipt=receipt, new_id=new_id)
+    advice = recommendations_for(
+        findings, page=page, receipt=receipt, site=effective_site(url, site), new_id=new_id
+    )
     return findings, advice
 
 
@@ -862,7 +864,9 @@ def _findings(body: bytes, check_id: str) -> tuple[list[Finding], list[Finding]]
     findings = peritext_findings(
         page, receipt, subject_url="https://a.example/p", site=SiteType.WORDPRESS, new_id=new_id
     )
-    advice = recommendations_for(findings, page=page, receipt=receipt, new_id=new_id)
+    advice = recommendations_for(
+        findings, page=page, receipt=receipt, site=SiteType.WORDPRESS, new_id=new_id
+    )
     return [f for f in findings if f.check_id == check_id], advice
 
 
@@ -959,14 +963,14 @@ def test_an_empty_required_property_is_missing() -> None:
 def test_the_new_check_versions_are_recorded() -> None:
     """Behavior changed, so the versions moved (CLAUDE.md: bump on any change).
 
-    peri.lang is at 2 (Session 4d); peri.og.core is at 3 (Session 6e, its
-    og:image actor from the head field control file).
+    peri.lang is at 3 and peri.og.core at 4 (Session 7: conditional wording
+    for UNKNOWN defects).
     """
     findings, _ = _findings(b"<html></html>", "peri.lang")
     og, _ = _findings(b"<html></html>", "peri.og.core")
 
-    assert {f.check_version for f in findings} == {"2"}
-    assert {f.check_version for f in og} == {"3"}
+    assert {f.check_version for f in findings} == {"3"}
+    assert {f.check_version for f in og} == {"4"}
 
 
 # One source for who controls a DEV head field (Session 6e)

@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import io
 import json
 import re
 import sys
@@ -14,6 +15,7 @@ from cernis import REPOSITORY_URL, __version__
 from cernis.audit import AuditLimits, PairTarget, RunFetches, Target, audit
 from cernis.checks.links import LinkLimits
 from cernis.checks.registry import CHECKS, CheckSpec
+from cernis.evaluate import C4Error, evaluate_c4, format_c4_json, format_c4_markdown
 from cernis.fetch import FetchConfig, Fetcher, FetchError, FetchResult, RobotsDecision
 from cernis.fetch.cache import DEFAULT_CACHE_DIR
 from cernis.history.classify import DiffError, diff_runs
@@ -110,6 +112,16 @@ def _add_run_options(parser: argparse.ArgumentParser) -> None:
             "read at most N sitemap documents per site "
             f"(default: {AuditLimits().sitemap_documents})"
         ),
+    )
+
+
+def _add_output_option(parser: argparse.ArgumentParser) -> None:
+    """Add ``--output``, for the commands that read the store.
+
+    :param parser: The command's parser.
+    """
+    parser.add_argument(
+        "--output", type=Path, help="write the output to this file instead of standard output"
     )
 
 
@@ -318,6 +330,7 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument(
             "--format", choices=("md", "json"), default="md", help="output format (default: md)"
         )
+        _add_output_option(sub)
         _add_store_option(sub)
     diff = commands.add_parser(
         "diff",
@@ -334,6 +347,7 @@ def build_parser() -> argparse.ArgumentParser:
     diff.add_argument(
         "--format", choices=("md", "json"), default="md", help="output format (default: md)"
     )
+    _add_output_option(diff)
     _add_store_option(diff)
     store = commands.add_parser(
         "store", help="check the receipt store", description="Check the receipt store."
@@ -355,6 +369,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="a tip kept elsewhere, checked instead of the anchor file",
     )
     _add_store_option(verify)
+    evaluate = commands.add_parser(
+        "evaluate",
+        help="evaluate a claim mechanically over a stored run",
+        description="Evaluate one of DESIGN.md section 8's claims over a stored run.",
+    )
+    claims = evaluate.add_subparsers(dest="claim", metavar="<claim>", required=True)
+    c4 = claims.add_parser(
+        "c4",
+        help="claim C-4: the three statuses are used honestly",
+        description=(
+            "Read one run back from the store, verified, and check claim C-4's four rules "
+            "over every finding: recommendations rest on observed findings of the run, "
+            "pass the no-promise test, every not-determinable finding says why, what, and "
+            "what was tried or needed, and no finding carries another status's field. "
+            "Exit 0 when every rule holds, 1 on a violation or a store that fails "
+            "verification, and 2 for a run that is not in the store."
+        ),
+    )
+    c4.add_argument("--run", required=True, metavar="RUN", help="the run's id")
+    c4.add_argument(
+        "--format", choices=("md", "json"), default="md", help="output format (default: md)"
+    )
+    _add_output_option(c4)
+    _add_store_option(c4)
     fetch = commands.add_parser(
         "fetch",
         help="fetch one URL politely and print its receipts, for manual checking",
@@ -660,15 +698,41 @@ def _write(options: RunOptions, text: str) -> int:
     :param text: The text.
     :return: 0, or 2 when the file cannot be written.
     """
-    if options.output is None:
+    return _emit(options.command, options.output, text)
+
+
+def _emit(command: str, output: Path | None, text: str) -> int:
+    """Write a command's text to a file, in UTF-8, or to standard output.
+
+    :param command: The command name, for messages.
+    :param output: The file, or ``None`` for standard output.
+    :param text: The text.
+    :return: 0, or 2 when the file cannot be written.
+    """
+    if output is None:
         sys.stdout.write(text)
         return 0
     try:
-        options.output.write_text(text, encoding="utf-8")
+        output.write_text(text, encoding="utf-8")
     except OSError as exc:
-        print(f"cernis {options.command}: cannot write {options.output}: {exc}", file=sys.stderr)
+        print(f"cernis {command}: cannot write {output}: {exc}", file=sys.stderr)
         return 2
     return 0
+
+
+def _use_utf8() -> None:
+    """Make standard output and standard error write UTF-8, whatever the code page.
+
+    A redirected stream on Windows takes the locale's code page (cp1252 on
+    most machines), which garbles or refuses characters such as the middle
+    dot in reports. A stream that is not a text wrapper (an embedding host's
+    replacement) is left as it is. Each stream keeps its own error handler
+    (standard error's is ``backslashreplace``), which ``reconfigure`` would
+    otherwise reset to ``strict``.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors=stream.errors)
 
 
 def _run_clock() -> datetime:
@@ -1076,40 +1140,49 @@ def _read_store(command: str, store: Path) -> list[StoredEntry] | None:
         return None
 
 
-def run_runs(store: Path, output_format: str) -> int:
+def run_runs(store: Path, output_format: str, output: Path | None = None) -> int:
     """List the runs in the store.
 
     :param store: The store directory.
     :param output_format: ``md`` or ``json``.
-    :return: 0, or 1 when the store failed verification or could not be read.
+    :param output: A file to write to, or ``None`` for standard output.
+    :return: 0; 1 when the store failed verification or could not be read;
+        2 when the output file cannot be written.
     """
     entries = _read_store("runs", store)
     if entries is None:
         return 1
     render = format_runs_json if output_format == "json" else format_runs_markdown
-    sys.stdout.write(render(stored_runs(entries), str(store)))
-    return 0
+    return _emit("runs", output, render(stored_runs(entries), str(store)))
 
 
-def run_history_command(url: str, store: Path, output_format: str) -> int:
+def run_history_command(
+    url: str, store: Path, output_format: str, output: Path | None = None
+) -> int:
     """List every stored run that audited a URL, with its findings for it.
 
     :param url: The URL.
     :param store: The store directory.
     :param output_format: ``md`` or ``json``.
-    :return: 0, or 1 when the store failed verification or could not be read.
+    :param output: A file to write to, or ``None`` for standard output.
+    :return: 0; 1 when the store failed verification or could not be read;
+        2 when the output file cannot be written.
     """
     entries = _read_store("history", store)
     if entries is None:
         return 1
     history = run_history(entries, url)
     render = format_history_json if output_format == "json" else format_history_markdown
-    sys.stdout.write(render(url, history, str(store)))
-    return 0
+    return _emit("history", output, render(url, history, str(store)))
 
 
 def run_diff_command(
-    url: str, store: Path, before: str | None, after: str | None, output_format: str
+    url: str,
+    store: Path,
+    before: str | None,
+    after: str | None,
+    output_format: str,
+    output: Path | None = None,
 ) -> int:
     """Compare two stored runs of a URL and print what changed.
 
@@ -1118,9 +1191,11 @@ def run_diff_command(
     :param before: The earlier run's id, or ``None`` for the default.
     :param after: The later run's id, or ``None`` for the default.
     :param output_format: ``md`` or ``json``.
+    :param output: A file to write to, or ``None`` for standard output.
     :return: 0 when the diff was made (whatever it found); 1 when fewer than
         two runs audited the URL, or the store failed verification or could
-        not be read; 2 when a run given did not audit the URL.
+        not be read; 2 when a run given did not audit the URL, or the output
+        file cannot be written.
     """
     entries = _read_store("diff", store)
     if entries is None:
@@ -1131,8 +1206,33 @@ def run_diff_command(
         print(f"cernis diff: {exc}", file=sys.stderr)
         return 2 if exc.usage else 1
     render = format_diff_json if output_format == "json" else format_diff_markdown
-    sys.stdout.write(render(result))
-    return 0
+    return _emit("diff", output, render(result))
+
+
+def run_evaluate_c4(run_id: str, store: Path, output_format: str, output: Path | None) -> int:
+    """Evaluate claim C-4 over one stored run.
+
+    :param run_id: The run.
+    :param store: The store directory.
+    :param output_format: ``md`` or ``json``.
+    :param output: A file to write to, or ``None`` for standard output.
+    :return: 0 when every rule holds; 1 on a violation, or when the store
+        failed verification or could not be read; 2 when the run is not a
+        complete run in the store, or the output file cannot be written.
+    """
+    entries = _read_store("evaluate c4", store)
+    if entries is None:
+        return 1
+    try:
+        result = evaluate_c4(entries, run_id)
+    except C4Error as exc:
+        print(f"cernis evaluate c4: {exc}", file=sys.stderr)
+        return 2
+    render = format_c4_json if output_format == "json" else format_c4_markdown
+    written = _emit("evaluate c4", output, render(result))
+    if written:
+        return written
+    return 0 if result.held else 1
 
 
 def format_verification(verification: Verification, store: Path, gaps: Sequence[str] = ()) -> str:
@@ -1201,6 +1301,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         to ``sys.argv[1:]`` when ``None``.
     :return: The process exit code.
     """
+    _use_utf8()
     args = build_parser().parse_args(argv)
     if args.command == "checks":
         if args.format == "json":
@@ -1241,11 +1342,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "fetch":
         return run_fetch(args.url, args.cache_dir, args.format, args.allow_loopback)
     if args.command == "runs":
-        return run_runs(args.store, args.format)
+        return run_runs(args.store, args.format, args.output)
     if args.command == "history":
-        return run_history_command(args.url, args.store, args.format)
+        return run_history_command(args.url, args.store, args.format, args.output)
     if args.command == "diff":
-        return run_diff_command(args.url, args.store, args.from_run, args.to_run, args.format)
+        return run_diff_command(
+            args.url, args.store, args.from_run, args.to_run, args.format, args.output
+        )
+    if args.command == "evaluate":
+        return run_evaluate_c4(args.run, args.store, args.format, args.output)
     if args.command == "store":
         if args.store_command == "verify":
             return run_store_verify(args.store, args.expected_tip)

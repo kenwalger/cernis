@@ -11,6 +11,14 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
 
 ### Added
 
+- `cernis evaluate c4 --run RUN [--format md|json] [--output FILE]` (Session 7,
+  `cernis.evaluate`): claim C-4's four rules over one stored run's finding
+  records, read back verified, with counts per rule and every violation by
+  finding id and key. Exit 0 when every rule holds, 1 on a violation or a
+  store that fails verification, 2 for a run not in the store.
+- `--output FILE` on `cernis runs`, `cernis history`, and `cernis diff`, as on
+  the auditing commands (Session 7).
+
 - The receipt store (Session 6b, DESIGN.md section 5): every completed run is
   appended to a hash-chained ledger in `.cernis/store/` (`--store` changes
   it), on sovereign-sdk-ledger 2.0.0, as canonical JSON entries keyed by the
@@ -166,6 +174,25 @@ pre-release review list is `docs/RELEASE-AUDIT.md`.
   `counts.site`).
 
 ### Changed
+
+- Every command writes UTF-8 to standard output and standard error, whatever
+  the console's code page, keeping each stream's error handler (Session 7).
+  Windows PowerShell 5.1's own `>` still re-decodes a program's output with
+  the console's code page; `--output` avoids that.
+- A recommendation on a defect whose actor is `UNKNOWN` is worded on a
+  condition ("If you control X, ...; if a theme, plugin, or platform writes
+  it, the change is theirs to make"), with DEV wordings that name the front
+  matter (Session 7). The recommendation's key is unchanged. Check versions:
+  `peri.canonical.single` 2, `peri.canonical.absolute` 2, `peri.og.core` 4,
+  `peri.og.url_matches_canonical` 3, `peri.lang` 3, `peri.jsonld.parses` 3,
+  `epi.canonical.resolves` 2, `epi.og.image.resolves` 3,
+  `epi.sitemap.listed` 2, and `epi.links.resolve` 2.
+
+### Fixed
+
+- A declared page that redirects to another declared page no longer stops
+  the run (Session 7): the shared receipt has one snapshot, and each page
+  keeps its own URL as its subject.
 
 - Frame normalization version 3 (Session 6e): every hidden input keeps its
   name but not its value in `frame_sha256`, whatever the name (version 2 did

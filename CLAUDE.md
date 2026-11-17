@@ -41,7 +41,9 @@ Cernis is a content discoverability auditor for published articles. Given an art
 
 **Frame normalization version 3 and C-2b (session 6e, 2026-11-05).** Hidden input values are left out of the frame (`+n3`); `AUTHOR_FRAME` is a frame change on WordPress or owned pages (classifier `3+h1`); a finding about a head field takes its actor from `head_fields.toml`. Claim C-2b holds (0 change events in five back-to-back runs); C-2c, across days, is proposed. DESIGN.md is at draft 2.14.
 
-**Next:** fix C-2c's sample before any run, or the rest of Phase 5 and Phase 6 (DESIGN.md section 10). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
+**Loose ends, C-2c fixed and started, C-4 held (session 7, 2026-11-17).** Every hidden value stays dropped (decision recorded in DESIGN.md section 3). Recommendations on `UNKNOWN` defects are worded on a condition (`variant_of`, `template_for`; ten check versions moved). Every command writes UTF-8, and `runs`, `history`, and `diff` take `--output`. `cernis evaluate c4` (`src/cernis/evaluate/c4.py`). C-2c is fixed in DESIGN.md section 8; run 1 is `20261117T154815Z-407563`, and runs 2 to 5 follow `docs/experiments/2026-11-c2c.md`. The second full audit is `20261117T155809Z-2105cd` (not a C-2c run); C-4 holds over it. A run keeps one snapshot per receipt. DESIGN.md is at draft 2.15.
+
+**Next:** C-2c's runs 2 to 5 (November 18, 19, 20, and 23, at 15:48 UTC or later) and its four diffs, then its result; the `epi.pair.canonical` redirect question (DESIGN.md section 8, the second full audit); the rest of Phase 6 (DESIGN.md section 10). No real network requests beyond what a session prompt names. Tests never touch the network; `tests/conftest.py` enforces it.
 
 ## Principles (DESIGN.md section 2)
 

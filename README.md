@@ -127,7 +127,12 @@ uv run cernis runs                      # every stored run: id, times, subjects,
 uv run cernis history <url>             # every stored run that audited the URL, its findings by key
 uv run cernis store verify              # check the whole chain against the anchored tip
 uv run cernis diff <url>                # what changed between its two most recent runs, and why
+uv run cernis evaluate c4 --run <id>    # claim C-4's rules over one stored run
 ```
+
+Every command writes UTF-8. `runs`, `history`, `diff`, and `evaluate` take
+`--output <file>` too, which is the reliable way to save their output from
+Windows PowerShell 5.1, whose own `>` re-decodes a program's output.
 
 `cernis diff` classifies the page change by who caused it (`CHECKER`,
 `AUTHOR_CONTENT`, `AUTHOR_METADATA`, `PLATFORM_RENDERING`, or

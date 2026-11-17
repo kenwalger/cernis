@@ -204,7 +204,7 @@ class RunFetches:
         :param store_body: ``False`` to keep only the receipts (for an image).
         :return: The fetch.
         """
-        key = str(httpx.URL(url).copy_with(fragment=None))
+        key = request_form(url)
         known = self._by_url.get(key)
         if known is not None and (not store_body or known.body is not None or not _whole(known)):
             return known
@@ -216,6 +216,15 @@ class RunFetches:
         if final is not None and final.final_url and _whole(result):
             self._by_url.setdefault(final.final_url, result)
         return result
+
+
+def request_form(url: str) -> str:
+    """Write a URL as the fetcher requests and records it: httpx's form, no fragment.
+
+    :param url: The URL.
+    :return: The form a receipt's ``requested_url`` takes.
+    """
+    return str(httpx.URL(url).copy_with(fragment=None))
 
 
 def _whole(result: FetchResult) -> bool:
@@ -355,7 +364,9 @@ def _audit_page(
     :return: What was fetched and read.
     """
     result = fetches.fetch(target.url)
-    subject = result.requested_url
+    # The target's own URL, never the result's: a target that another
+    # target redirected to reuses that target's fetch (Session 7).
+    subject = request_form(target.url)
     outcome = classify(result, effective_site(subject, target.site, prefixes))
     if not isinstance(outcome, Readable):
         findings.extend(not_determinable_findings(outcome, subject_url=subject, new_id=new_id))
@@ -366,15 +377,18 @@ def _audit_page(
     page = parse_page(outcome.receipt, outcome.body)
     tree, _ = parse_tree(outcome.body, outcome.receipt.header("content-type"))
     article = read_article(tree, page_url, target.site, prefixes)
-    snapshots.append(
-        build_snapshot(outcome.receipt, outcome.body, site=target.site, prefixes=prefixes)
-    )
+    # A target that redirects to another target's URL is read from the same
+    # receipt (one fetch per URL per run), and a receipt has one snapshot.
+    if all(s.receipt_id != outcome.receipt.id for s in snapshots):
+        snapshots.append(
+            build_snapshot(outcome.receipt, outcome.body, site=target.site, prefixes=prefixes)
+        )
     observed = peritext_findings(
         page, outcome.receipt, subject_url=subject, site=site, new_id=new_id
     )
     findings.extend(observed)
     findings.extend(
-        recommendations_for(observed, page=page, receipt=outcome.receipt, new_id=new_id)
+        recommendations_for(observed, page=page, receipt=outcome.receipt, site=site, new_id=new_id)
     )
     return FetchedPage(
         subject=subject, site=site, result=result, outcome=outcome, page=page, article=article
@@ -430,7 +444,7 @@ class _Around:
                 new_id=new_id,
                 known=self.fetches.known,
             )
-            found += links + resource_recommendations(links, new_id=new_id)
+            found += links + resource_recommendations(links, site=page.site, new_id=new_id)
         return found
 
     def _robots(self, page: FetchedPage, new_id: Callable[[], str]) -> list[Finding]:
@@ -558,4 +572,4 @@ def _around_page(
             pass
         else:
             found.append(og_image_resolves(page, image, image_result, new_id=new_id))
-    return found + resource_recommendations(found, new_id=new_id)
+    return found + resource_recommendations(found, site=page.site, new_id=new_id)

@@ -337,7 +337,12 @@ def sitemap_listed(
         return [
             missing,
             *sitemap_recommendation(
-                missing, url=page_url, section=section, others=len(others), new_id=new_id
+                missing,
+                url=page_url,
+                section=section,
+                others=len(others),
+                site=site,
+                new_id=new_id,
             ),
         ]
     alone = _finding(

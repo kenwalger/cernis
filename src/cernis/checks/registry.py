@@ -61,28 +61,43 @@ def _epi(id: str, description: str, implemented: bool = False, version: str = "1
 
 CHECKS: tuple[CheckSpec, ...] = (
     _peri("peri.canonical.present", 'A <link rel="canonical"> exists on the page.'),
-    _peri("peri.canonical.single", "The page declares exactly one canonical URL."),
-    _peri("peri.canonical.absolute", "The canonical URL is absolute and well formed."),
+    # Session 7 moved each check below whose recommendation an UNKNOWN defect
+    # reaches in a run up one version: that recommendation is now worded on a
+    # condition (If you control X, ...), never as an unconditional instruction.
+    _peri(
+        "peri.canonical.single",
+        "The page declares exactly one canonical URL.",
+        version="2",
+    ),
+    _peri(
+        "peri.canonical.absolute",
+        "The canonical URL is absolute and well formed.",
+        version="2",
+    ),
     _peri("peri.meta.description", "A meta description exists; its length is reported."),
     # Version 2 (Session 4d): reports og:type; a missing required property is a
     # defect on a page that uses Open Graph. Version 3 (Session 6e): actors from
-    # head_fields.toml, so og:image on DEV is UNKNOWN (was AUTHOR).
+    # head_fields.toml, so og:image on DEV is UNKNOWN (was AUTHOR). Version 4
+    # (Session 7): conditional wording for UNKNOWN defects.
     _peri(
         "peri.og.core",
         "og:title, og:type, og:description, og:image, and og:url are present.",
-        version="3",
+        version="4",
     ),
     # Version 2 (Session 5a): a DIFFERENT defect cites the Open Graph protocol.
-    _peri("peri.og.url_matches_canonical", "og:url agrees with the canonical URL.", version="2"),
+    # Version 3 (Session 7): conditional wording for UNKNOWN defects.
+    _peri("peri.og.url_matches_canonical", "og:url agrees with the canonical URL.", version="3"),
     # Version 2 (Session 4d): a missing or empty lang is a defect (WCAG 2 SC 3.1.1).
-    _peri("peri.lang", "The <html> element sets a lang attribute.", version="2"),
+    # Version 3 (Session 7): conditional wording for UNKNOWN defects.
+    _peri("peri.lang", "The <html> element sets a lang attribute.", version="3"),
     # Version 2 (Session 6e) of the next three: actors from head_fields.toml. On
     # DEV, json-ld and title are UNKNOWN (were PLATFORM), and a robots directive
     # under a crawler's name makes peri.robots.directives UNKNOWN.
+    # peri.jsonld.parses version 3 (Session 7): conditional wording for UNKNOWN defects.
     _peri(
         "peri.jsonld.parses",
         "JSON-LD blocks parse as JSON; their @type is reported.",
-        version="2",
+        version="3",
     ),
     _peri("peri.title", "The <title> and its length are reported.", version="2"),
     _peri(
@@ -99,13 +114,16 @@ CHECKS: tuple[CheckSpec, ...] = (
         "epi.canonical.resolves",
         "Each canonical URL's status and redirect chain; a defect only for 404 or 410.",
         implemented=True,
+        # Version 2 (Session 7): conditional wording for UNKNOWN defects.
+        version="2",
     ),
     _epi(
         "epi.og.image.resolves",
         "The og:image URL's status and content type; a defect for 404, 410, or not an image.",
         implemented=True,
         # Version 2 (Session 6e): the actor is og:image's control (UNKNOWN on DEV, was PLATFORM).
-        version="2",
+        # Version 3 (Session 7): conditional wording for UNKNOWN defects.
+        version="3",
     ),
     _epi(
         "epi.og.image.shared",
@@ -123,11 +141,17 @@ CHECKS: tuple[CheckSpec, ...] = (
         "epi.sitemap.listed",
         "Whether the site's sitemap lists the URL; a defect only if it lists others nearby.",
         implemented=True,
+        # Version 2 (Session 7): conditional wording for UNKNOWN defects.
+        version="2",
     ),
     _epi(
         "epi.links.resolve",
         "Each article-body link's status; a defect only for 404 or 410.",
         implemented=True,
+        # Version 2 (Session 7): conditional wording for UNKNOWN defects. No run
+        # reaches it today (links are AUTHOR wherever an extractor finds them), but
+        # what the check can produce changed (the Session 7 audit, aud_BzbIG6RavZ).
+        version="2",
     ),
 )
 """Every registered check, peritext first, in DESIGN.md order."""

@@ -10,7 +10,9 @@ A recommendation is made only for a defect the author can act on, or might
 (``AUTHOR`` or ``UNKNOWN``). A defect only the platform can change (on DEV,
 ``og:url`` against the author's canonical) is reported as observed, with no
 recommendation: telling the author to change what they cannot would be
-noise.
+noise. A defect whose actor is ``UNKNOWN`` gets the template's conditional
+wording (:func:`cernis.checks.recommendations.template_for`), which never
+assumes the author controls what it names.
 
 A recommendation's ``target`` is the template id, then ``:`` and what it is
 about (the observed finding's target, or ``canonical N``), so every
@@ -21,9 +23,10 @@ from collections.abc import Callable
 from urllib.parse import urljoin
 
 from cernis.checks.peritext import canonical_problem
-from cernis.checks.recommendations import TEMPLATES_BY_ID
+from cernis.checks.recommendations import template_for
 from cernis.checks.registry import check
 from cernis.model import Actor, Finding, Receipt, Status
+from cernis.parse.extractors import SiteType
 from cernis.parse.html import ParsedPage
 
 NewId = Callable[[], str]
@@ -48,19 +51,22 @@ def _recommend(
     finding: Finding,
     about: str,
     new_id: NewId,
+    site: SiteType | None,
     **values: str,
 ) -> Finding:
     """Fill a template into a recommendation resting on one observed defect.
 
-    :param template_id: The template.
-    :param finding: The defect it rests on.
+    :param template_id: The base template.
+    :param finding: The defect it rests on; an ``UNKNOWN`` actor chooses the
+        template's conditional wording.
     :param about: What it is about, for the target (may be empty).
     :param new_id: The run's finding id source.
+    :param site: The page's site type, for the conditional wording.
     :param **values: The template's placeholders. Page content is passed
         here, never used as a format string.
     :return: The recommendation.
     """
-    template = TEMPLATES_BY_ID[template_id]
+    template = template_for(template_id, finding.actor, site)
     return Finding(
         id=new_id(),
         check_id=template.check_id,
@@ -69,7 +75,7 @@ def _recommend(
         actor=finding.actor,
         subject_url=finding.subject_url,
         summary=template.action.format(**values),
-        target=f"{template.id}:{about}" if about else template.id,
+        target=f"{template_id}:{about}" if about else template_id,
         rationale=template.rationale.format(**values),
         based_on=(finding.id,),
     )
@@ -80,6 +86,7 @@ def recommendations_for(
     *,
     page: ParsedPage,
     receipt: Receipt,
+    site: SiteType | None,
     new_id: NewId,
 ) -> list[Finding]:
     """Recommend a change for each defect the author can act on.
@@ -87,6 +94,7 @@ def recommendations_for(
     :param findings: The page's observed findings.
     :param page: The parsed page, for the values the templates name.
     :param receipt: The page's receipt, for resolving relative URLs.
+    :param site: The page's site type, for the wording of ``UNKNOWN`` defects.
     :param new_id: The run's finding id source.
     :return: The recommendations, in the order of the defects they address.
     """
@@ -105,6 +113,7 @@ def recommendations_for(
                     finding,
                     "",
                     new_id,
+                    site,
                     count=str(len(page.canonicals)),
                     urls=", ".join(hrefs),
                 )
@@ -121,6 +130,7 @@ def recommendations_for(
                         finding,
                         f"canonical {position}",
                         new_id,
+                        site,
                         href=href,
                         resolved=urljoin(base, href.strip()) if problem == "relative" else "",
                     )
@@ -134,6 +144,7 @@ def recommendations_for(
                     finding,
                     "",
                     new_id,
+                    site,
                     og_url=og[0] or "" if og else "",
                     canonical=named[0] or "" if named else "",
                 )
@@ -147,12 +158,15 @@ def recommendations_for(
                 state = "has no content attribute"
             else:
                 state = "is empty"
+            # The DEV wording names cover_image, which is og:image's source on
+            # DEV only; any other property takes the wording for any site.
             advice.append(
                 _recommend(
                     "peri.og.core.add-required",
                     finding,
                     prop,
                     new_id,
+                    site if prop == "og:image" else None,
                     prop=prop,
                     meaning=_OG_MEANING[prop],
                     state=state,
@@ -160,7 +174,7 @@ def recommendations_for(
             )
         elif finding.check_id == "peri.lang":
             state = "has no lang attribute" if page.lang is None else "has an empty lang attribute"
-            advice.append(_recommend("peri.lang.add-lang", finding, "", new_id, state=state))
+            advice.append(_recommend("peri.lang.add-lang", finding, "", new_id, site, state=state))
         elif finding.check_id == "peri.jsonld.parses":
             block_number = finding.target.removeprefix("block ")
             block = page.json_ld[int(block_number) - 1]
@@ -170,6 +184,7 @@ def recommendations_for(
                     finding,
                     finding.target,
                     new_id,
+                    site,
                     number=block_number,
                     error=block.error or "",
                 )
@@ -187,11 +202,14 @@ def _evidence_value(finding: Finding, location: str) -> str | None:
     return next((e.observed for e in finding.evidence if e.location == location), None)
 
 
-def resource_recommendations(findings: list[Finding], *, new_id: NewId) -> list[Finding]:
+def resource_recommendations(
+    findings: list[Finding], *, site: SiteType | None, new_id: NewId
+) -> list[Finding]:
     """Recommend a change for each canonical, og:image, or link defect the author can act on.
 
     :param findings: Observed ``epi.canonical.resolves``,
         ``epi.og.image.resolves``, and ``epi.links.resolve`` findings.
+    :param site: The page's site type, for the wording of ``UNKNOWN`` defects.
     :param new_id: The run's finding id source.
     :return: The recommendations.
     """
@@ -209,6 +227,7 @@ def resource_recommendations(findings: list[Finding], *, new_id: NewId) -> list[
                     finding,
                     finding.target,
                     new_id,
+                    site,
                     url=finding.target,
                     status=status,
                 )
@@ -220,6 +239,7 @@ def resource_recommendations(findings: list[Finding], *, new_id: NewId) -> list[
                     finding,
                     finding.target,
                     new_id,
+                    site,
                     url=finding.target,
                     status=status,
                 )
@@ -238,6 +258,7 @@ def resource_recommendations(findings: list[Finding], *, new_id: NewId) -> list[
                     finding,
                     finding.target,
                     new_id,
+                    site,
                     url=finding.target,
                     problem=problem,
                 )
@@ -255,6 +276,9 @@ def pair_recommendations(
     new_id: NewId,
 ) -> list[Finding]:
     """Recommend a change for each ``epi.pair.canonical`` defect.
+
+    The pair check's findings are always ``AUTHOR``, since the author
+    declared the pair, so no conditional wording applies.
 
     :param findings: The pair's findings.
     :param original_url: The declared original's URL.
@@ -280,6 +304,7 @@ def pair_recommendations(
                         finding,
                         "copy",
                         new_id,
+                        None,
                         original_url=original_url,
                         copy_state=state,
                     )
@@ -291,6 +316,7 @@ def pair_recommendations(
                         finding,
                         "copy",
                         new_id,
+                        None,
                         original_url=original_url,
                     )
                 )
@@ -301,6 +327,7 @@ def pair_recommendations(
                         finding,
                         "copy",
                         new_id,
+                        None,
                         original_url=original_url,
                         copy_canonical=copy_canonical,
                     )
@@ -312,6 +339,7 @@ def pair_recommendations(
                     finding,
                     "original",
                     new_id,
+                    None,
                     original_url=original_url,
                     original_canonical=original_canonical or "",
                 )
@@ -320,7 +348,13 @@ def pair_recommendations(
 
 
 def sitemap_recommendation(
-    finding: Finding, *, url: str, section: str, others: int, new_id: NewId
+    finding: Finding,
+    *,
+    url: str,
+    section: str,
+    others: int,
+    site: SiteType | None,
+    new_id: NewId,
 ) -> list[Finding]:
     """Recommend adding a page to the sitemap, for an ``epi.sitemap.listed`` defect.
 
@@ -328,6 +362,7 @@ def sitemap_recommendation(
     :param url: The page's URL.
     :param section: The section the sitemap lists other pages under.
     :param others: How many other pages it lists there.
+    :param site: The page's site type, for the wording of an ``UNKNOWN`` defect.
     :param new_id: The run's finding id source.
     :return: One recommendation for an author-actionable defect, else none.
     """
@@ -339,6 +374,7 @@ def sitemap_recommendation(
             finding,
             "",
             new_id,
+            site,
             url=url,
             section=section,
             count=str(others),

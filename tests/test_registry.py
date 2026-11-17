@@ -61,17 +61,24 @@ def test_every_check_is_implemented() -> None:
     peri.og.url_matches_canonical. Session 6e's actors from the head field
     control file bumped peri.og.core to 3, and peri.title, peri.jsonld.parses,
     peri.robots.directives, epi.og.image.resolves, and epi.og.image.shared to
-    2. Every other check is still at version 1.
+    2. Session 7's conditional wording for UNKNOWN defects moved each check
+    whose recommendation an UNKNOWN defect reaches in a run up by one.
+    Every other check is still at version 1.
     """
     versions = {
-        "peri.lang": "2",
-        "peri.og.url_matches_canonical": "2",
-        "peri.og.core": "3",
+        "peri.canonical.single": "2",
+        "peri.canonical.absolute": "2",
+        "peri.lang": "3",
+        "peri.og.url_matches_canonical": "3",
+        "peri.og.core": "4",
         "peri.title": "2",
-        "peri.jsonld.parses": "2",
+        "peri.jsonld.parses": "3",
         "peri.robots.directives": "2",
-        "epi.og.image.resolves": "2",
+        "epi.canonical.resolves": "2",
+        "epi.og.image.resolves": "3",
         "epi.og.image.shared": "2",
+        "epi.links.resolve": "2",
+        "epi.sitemap.listed": "2",
     }
     for spec in CHECKS:
         assert spec.version == versions.get(spec.id, "1"), spec.id

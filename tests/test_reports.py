@@ -139,7 +139,7 @@ def test_the_markdown_report_has_the_header_and_three_sections(tmp_path: Path) -
     text = report_markdown(run)
 
     assert f"Run: {run.id} · Cernis {run.cernis_version}" in text
-    assert "peri.canonical.single 1" in text
+    assert "peri.canonical.single 2" in text
     statuses = [f.status.value for f in run.findings]
     headings = [line for line in text.splitlines() if line.startswith("## ")]
     assert headings == [
